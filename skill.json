@@ -1,0 +1,57 @@
+{
+  "name": "bilibili-hot100-launcher",
+  "version": "1.0.0",
+  "description": "One-click launcher for bilibili-hot100 project (Vue3 frontend + Python FastAPI backend). Auto-detects OS, manages ports, installs dependencies, and opens browser.",
+  "author": "AI Assistant",
+  "license": "MIT",
+  "platforms": ["windows", "macos", "linux"],
+  "languages": ["zh", "en"],
+  "triggers": {
+    "keywords": [
+      "启动项目", "运行项目", "start project", "run project",
+      "打开bilibili", "run bilibili", "启动bilibili",
+      "启动前端", "启动后端", "start frontend", "start backend",
+      "怎么运行", "how to run", "如何启动"
+    ],
+    "patterns": [
+      "(?:启动|运行|打开|start|run).*?(?:bilibili|项目|project|frontend|backend|前端|后端)",
+      "(?:怎么|如何|how to).*?(?:运行|启动|run|start)"
+    ]
+  },
+  "actions": {
+    "windows": {
+      "command": ".\\start-all.bat",
+      "shell": "powershell"
+    },
+    "macos": {
+      "command": "./start-all.sh",
+      "shell": "bash"
+    },
+    "linux": {
+      "command": "./start-all.sh",
+      "shell": "bash"
+    }
+  },
+  "services": {
+    "frontend": {
+      "port": 3000,
+      "url": "http://localhost:3000",
+      "framework": "Vue3 + TypeScript + Vite"
+    },
+    "backend": {
+      "port": 8000,
+      "url": "http://localhost:8000",
+      "docs": "http://localhost:8000/docs",
+      "framework": "Python + FastAPI"
+    }
+  },
+  "requirements": {
+    "windows": ["PowerShell 5.0+", "Python 3.8+", "Node.js 16+"],
+    "macos": ["Bash", "Python 3.8+", "Node.js 16+"],
+    "linux": ["Bash", "Python 3.8+", "Node.js 16+"]
+  },
+  "project_structure": {
+    "frontend": "bilibili-hot100-vue3-ts",
+    "backend": "bilibili-hot100-backend"
+  }
+}

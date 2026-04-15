@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Backend generated data
+bilibili-hot100-backend/cache/
+bilibili-hot100-backend/data_exports/
+bilibili-hot100-backend/*.log
+
+# Node.js
+node_modules/
+bilibili-hot100-vue3-ts/dist/
+bilibili-hot100-vue3-ts/node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Runtime files
+.pids/
+*.pid
+services.txt
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
