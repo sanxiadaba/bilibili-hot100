@@ -92,15 +92,15 @@ Press Ctrl+C to stop all services
 
 **AI Response:**
 ```
-我来帮您清理端口...
+启动器会拒绝终止不属于本项目的进程。先确认端口占用者：
 
 Windows:
-Get-NetTCPConnection -LocalPort 3000,8000 | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+Get-NetTCPConnection -State Listen -LocalPort 3000,8000 | Select-Object LocalPort, OwningProcess
 
 macOS/Linux:
-lsof -ti:3000,8000 | xargs kill -9
+lsof -nP -iTCP:3000 -iTCP:8000 -sTCP:LISTEN
 
-然后重新运行启动脚本即可。
+确认进程身份后关闭对应应用，再重新运行启动脚本。
 ```
 
 ## Example 6: First Time Setup
@@ -113,7 +113,7 @@ lsof -ti:3000,8000 | xargs kill -9
 
 1. 创建 Python 虚拟环境 (.venv)
 2. 安装后端依赖 (pip install)
-3. 安装前端依赖 (npm install)
+3. 安装前端依赖 (npm ci)
 4. 启动服务并打开浏览器
 
 您只需要运行：
@@ -132,11 +132,11 @@ lsof -ti:3000,8000 | xargs kill -9
 
 方法1: 在终端窗口按 Ctrl+C
 方法2: 关闭终端窗口
-方法3: 运行命令强制停止：
+后台模式请运行项目停止脚本：
 
 Windows:
-taskkill /F /IM node.exe /IM python.exe
+.\stop-all.bat
 
 macOS/Linux:
-killall node python
+./stop-all.sh
 ```

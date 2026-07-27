@@ -56,8 +56,26 @@ export interface StatsData {
   avgViews: number
   avgLikes: number
   categoryStats: Record<string, CategoryStat>
+  allVideos: VideoItem[]
   topVideos: VideoItem[]
   mostLiked: VideoItem[]
+}
+
+export interface RefreshResponse {
+  code: number
+  message: string
+  refresh_id: string
+  is_updating: boolean
+}
+
+export interface BackendStatus {
+  total_videos: number
+  update_time: string | null
+  is_updating: boolean
+  refresh_id: string | null
+  last_error: string | null
+  cached_images: number
+  cached_urls: number
 }
 
 export interface LogEntry {
@@ -67,8 +85,3 @@ export interface LogEntry {
 }
 
 export type SortType = 'rank' | 'view' | 'like' | 'coin' | 'favorite' | 'danmaku'
-
-export interface SelectOption {
-  label: string
-  value: string
-}

@@ -11,11 +11,13 @@ build/
 
 # Virtual environments
 .venv/
+bilibili-hot100-backend.venv/
 venv/
 ENV/
 env/
 
 # Backend generated data
+data/
 bilibili-hot100-backend/cache/
 bilibili-hot100-backend/data_exports/
 bilibili-hot100-backend/*.log
@@ -24,6 +26,8 @@ bilibili-hot100-backend/*.log
 node_modules/
 bilibili-hot100-vue3-ts/dist/
 bilibili-hot100-vue3-ts/node_modules/
+bilibili-hot100-vue3-ts/test-results/
+bilibili-hot100-vue3-ts/playwright-report/
 *.log
 npm-debug.log*
 yarn-debug.log*

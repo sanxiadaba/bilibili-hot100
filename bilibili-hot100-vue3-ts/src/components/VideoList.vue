@@ -11,9 +11,9 @@
       </template>
     </n-empty>
 
-    <div v-else class="video-grid">
+    <div v-else-if="videos.length" class="video-grid">
       <VideoCard
-        v-for="video in videos"
+        v-for="video in visibleVideos"
         :key="video.bvid"
         :video="video"
       />
@@ -23,18 +23,27 @@
       <n-text depth="3">
         共 {{ videos.length }} 个视频
       </n-text>
+      <n-pagination
+        v-if="pageCount > 1"
+        v-model:page="page"
+        :page-count="pageCount"
+        :page-slot="7"
+        aria-label="视频分页"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NEmpty, NButton, NSpin, NText } from 'naive-ui'
+import { computed, ref, watch } from 'vue'
+import { NButton, NEmpty, NPagination, NText } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 import VideoCard from './VideoCard.vue'
 import type { VideoItem } from '@/types'
 
 const props = defineProps<{
   videos: VideoItem[]
+  loading: boolean
 }>()
 
 const emit = defineEmits<{
@@ -42,6 +51,17 @@ const emit = defineEmits<{
 }>()
 
 const themeStore = useThemeStore()
+const page = ref(1)
+const pageSize = 24
+const pageCount = computed(() => Math.ceil(props.videos.length / pageSize))
+const visibleVideos = computed(() => {
+  const start = (page.value - 1) * pageSize
+  return props.videos.slice(start, start + pageSize)
+})
+
+watch(() => props.videos, () => {
+  page.value = 1
+})
 
 const onRefresh = () => {
   emit('refresh')
@@ -103,7 +123,10 @@ const onRefresh = () => {
 }
 
 .list-footer {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 32px;
   border-top: 1px solid #e8e8e8;
   margin-top: 24px;
@@ -111,6 +134,13 @@ const onRefresh = () => {
   border-radius: 12px;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
   transition: all 0.3s ease;
+}
+
+@media (max-width: 600px) {
+  .list-footer {
+    flex-direction: column;
+    padding: 20px 12px;
+  }
 }
 
 .list-footer:hover {

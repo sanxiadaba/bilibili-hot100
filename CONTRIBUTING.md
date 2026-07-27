@@ -25,7 +25,7 @@ Thank you for your interest in contributing!
 1. **Fork** the repository.
 2. **Create** a feature branch: `git checkout -b feature/your-feature-name`.
 3. **Make** your changes with clear, descriptive commits.
-4. **Test** your changes — verify both frontend and backend still run correctly.
+4. **Test** your changes with the backend unit tests, frontend type check, production build, and E2E suite.
 5. **Push** to your fork and open a Pull Request against `main`.
 6. Fill in the PR template with a description of what changed and why.
 
@@ -50,6 +50,17 @@ cd bilibili-hot100
 ```
 
 Visit http://localhost:3000 to verify the frontend is running.
+
+Before committing:
+
+```bash
+cd bilibili-hot100-backend
+python -m unittest discover -s tests -v
+cd ../bilibili-hot100-vue3-ts
+npm run build
+npm run test:e2e
+npm audit
+```
 
 ### Commit Message Format
 

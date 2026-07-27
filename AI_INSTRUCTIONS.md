@@ -33,7 +33,7 @@ When triggered, execute these steps:
 2. **Run launcher with --detached flag**
 3. **Report progress** - Output each step to user
 4. **Confirm completion** - Services are running in background
-5. **Provide URLs** - http://localhost:3000
+5. **Provide URLs** - http://127.0.0.1:3000
 
 ## Example Execution Output
 
@@ -62,9 +62,9 @@ When triggered, execute these steps:
 ========================================
 
 Access URLs:
-  Frontend: http://localhost:3000
-  Backend:  http://localhost:8000
-  API Docs: http://localhost:8000/docs
+  Frontend: http://127.0.0.1:3000
+  Backend:  http://127.0.0.1:8000
+  API Docs: http://127.0.0.1:8000/docs
 
 Services running in background.
 Use stop-all.bat to stop services.
@@ -101,9 +101,9 @@ RUN: ./stop-all.sh
 ## Service Status
 
 After running, services are available at:
-- **Frontend:** http://localhost:3000
-- **Backend API:** http://localhost:8000
-- **API Docs:** http://localhost:8000/docs
+- **Frontend:** http://127.0.0.1:3000
+- **Backend API:** http://127.0.0.1:8000
+- **API Docs:** http://127.0.0.1:8000/docs
 
 Process information is stored in `.pids/` directory:
 - `backend.pid` - Backend process ID

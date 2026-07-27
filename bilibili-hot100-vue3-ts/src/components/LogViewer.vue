@@ -56,7 +56,6 @@
 import { ref, computed, watch, nextTick, onUnmounted } from 'vue'
 import {
   NModal,
-  NCard,
   NSpace,
   NButton,
   NTag,

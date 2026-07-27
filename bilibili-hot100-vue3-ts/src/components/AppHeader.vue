@@ -32,6 +32,7 @@
                 circle
                 size="large"
                 :loading="videoStore.refreshing"
+                aria-label="刷新数据"
                 @click="onRefresh"
                 class="action-button"
               >
@@ -45,7 +46,7 @@
 
           <n-tooltip>
             <template #trigger>
-              <n-button circle size="large" @click="showLogs" class="action-button">
+              <n-button circle size="large" aria-label="查看日志" @click="showLogs" class="action-button">
                 <template #icon>
                   <n-icon :component="DocumentTextOutline" :size="20" />
                 </template>
@@ -56,7 +57,13 @@
 
           <n-tooltip>
             <template #trigger>
-              <n-button circle size="large" @click="toggleStats" class="action-button">
+              <n-button
+                circle
+                size="large"
+                :aria-label="showStatsView ? '返回视频列表' : '打开数据分析'"
+                @click="toggleStats"
+                class="action-button"
+              >
                 <template #icon>
                   <n-icon :component="StatsChartOutline" :size="20" />
                 </template>
@@ -106,7 +113,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import {
   NIcon,
   NInput,
@@ -128,7 +134,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useVideoStore } from '@/stores/videos'
 import ThemeToggle from './ThemeToggle.vue'
 import CategoryFilter from './CategoryFilter.vue'
-import type { SelectOption, SortType } from '@/types'
+import type { SortType } from '@/types'
 
 const props = defineProps<{
   showStatsView: boolean
@@ -143,7 +149,7 @@ const emit = defineEmits<{
 const themeStore = useThemeStore()
 const videoStore = useVideoStore()
 
-const sortOptions: SelectOption[] = [
+const sortOptions: Array<{ label: string; value: SortType }> = [
   { label: '默认排名', value: 'rank' },
   { label: '播放量', value: 'view' },
   { label: '点赞数', value: 'like' },
@@ -290,27 +296,34 @@ const formatUpdateTime = (time: string): string => {
 
 @media (max-width: 768px) {
   .header-content {
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
   }
 
   .search-section {
     max-width: none;
-    order: 3;
+    min-width: 0;
+    grid-column: 1 / -1;
   }
 
   .actions-section {
-    order: 2;
-    justify-content: center;
+    justify-self: end;
   }
 
   .filter-section {
-    flex-direction: column;
-    align-items: stretch;
+    margin-top: 10px;
+    padding-top: 10px;
+    gap: 8px;
   }
 
   .sort-section {
     justify-content: flex-start;
+  }
+
+  .update-info {
+    margin-top: 6px;
   }
 }
 </style>

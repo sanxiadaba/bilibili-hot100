@@ -1,38 +1,33 @@
-"""
-B站热门视频 TOP 100 后端服务
-使用 FastAPI + 异步爬虫实现实时数据获取
-支持 WebSocket 实时日志推送
-图片按日期分类存储，避免重复下载
-"""
+"""FastAPI service for the Bilibili popular-video dashboard."""
+
+from __future__ import annotations
 
 import asyncio
 import hashlib
 import json
+import os
+import re
 import time
-from datetime import datetime
-from typing import List, Optional, Dict, Set
-from pathlib import Path
 from collections import deque
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
+from uuid import uuid4
 
-import aiohttp
 import aiofiles
-from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+import aiohttp
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-app = FastAPI(title="B站热门视频 API", version="1.2.0")
 
-# CORS 配置
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+class CrawlError(RuntimeError):
+    """Raised when a complete, valid TOP 100 snapshot cannot be produced."""
 
-# 数据模型
+
 class VideoStat(BaseModel):
     view: int
     danmaku: int
@@ -42,10 +37,12 @@ class VideoStat(BaseModel):
     share: int
     like: int
 
+
 class VideoOwner(BaseModel):
     mid: int
     name: str
     face: str
+
 
 class VideoItem(BaseModel):
     aid: int
@@ -60,6 +57,7 @@ class VideoItem(BaseModel):
     rank: int
     rcmd_reason: Optional[dict] = None
 
+
 class Hot100Response(BaseModel):
     code: int
     message: str
@@ -67,168 +65,114 @@ class Hot100Response(BaseModel):
     update_time: str
     from_cache: bool
 
-class LogEntry(BaseModel):
-    time: str
-    level: str
-    message: str
 
-# 日志管理器
 class LogManager:
     def __init__(self, max_size: int = 500):
-        self.logs: deque = deque(maxlen=max_size)
+        self.logs: deque[dict] = deque(maxlen=max_size)
         self.websockets: List[WebSocket] = []
         self.lock = asyncio.Lock()
-    
-    def add_log(self, level: str, message: str):
-        """添加日志条目"""
+        self.queue: Optional[asyncio.Queue[dict]] = None
+        self.worker: Optional[asyncio.Task[None]] = None
+
+    async def start(self) -> None:
+        self.queue = asyncio.Queue(maxsize=1000)
+        self.worker = asyncio.create_task(self._broadcast_loop())
+
+    async def stop(self) -> None:
+        if self.worker:
+            self.worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await self.worker
+        self.worker = None
+        self.queue = None
+
+    def add_log(self, level: str, message: str) -> None:
         entry = {
             "time": datetime.now().strftime("%H:%M:%S.%f")[:-3],
             "level": level,
-            "message": message
+            "message": message,
         }
         self.logs.append(entry)
-        # 异步推送日志到所有WebSocket客户端
-        asyncio.create_task(self.broadcast(entry))
-    
-    async def broadcast(self, entry: dict):
-        """广播日志到所有连接的WebSocket客户端"""
-        disconnected = []
-        for ws in self.websockets:
-            try:
-                await ws.send_json({"type": "log", "data": entry})
-            except:
-                disconnected.append(ws)
-        
-        # 清理断开的连接
-        for ws in disconnected:
-            if ws in self.websockets:
-                self.websockets.remove(ws)
-    
-    async def connect(self, websocket: WebSocket):
-        """连接WebSocket"""
+        if not self.queue:
+            return
+        if self.queue.full():
+            with suppress(asyncio.QueueEmpty):
+                self.queue.get_nowait()
+        self.queue.put_nowait(entry)
+
+    async def _broadcast_loop(self) -> None:
+        assert self.queue is not None
+        while True:
+            entry = await self.queue.get()
+            async with self.lock:
+                connections = list(self.websockets)
+            if not connections:
+                continue
+            results = await asyncio.gather(
+                *(ws.send_json({"type": "log", "data": entry}) for ws in connections),
+                return_exceptions=True,
+            )
+            disconnected = [
+                ws for ws, result in zip(connections, results) if isinstance(result, Exception)
+            ]
+            if disconnected:
+                async with self.lock:
+                    self.websockets = [ws for ws in self.websockets if ws not in disconnected]
+
+    async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
         async with self.lock:
             self.websockets.append(websocket)
-        # 发送历史日志
-        for entry in self.logs:
+            history = list(self.logs)
+        for entry in history:
             await websocket.send_json({"type": "log", "data": entry})
-    
-    async def disconnect(self, websocket: WebSocket):
-        """断开WebSocket"""
+
+    async def disconnect(self, websocket: WebSocket) -> None:
         async with self.lock:
             if websocket in self.websockets:
                 self.websockets.remove(websocket)
-    
+
     def get_logs(self) -> List[dict]:
-        """获取所有日志"""
         return list(self.logs)
-    
-    def clear(self):
-        """清空日志"""
+
+    def clear(self) -> None:
         self.logs.clear()
 
-# 全局日志管理器
+
 log_manager = LogManager()
 
-# 全局缓存
-cache = {
+cache: Dict[str, Any] = {
     "data": [],
     "update_time": None,
-    "is_updating": False
+    "is_updating": False,
+    "refresh_id": None,
+    "last_error": None,
+}
+refresh_lock = asyncio.Lock()
+current_refresh_task: Optional[asyncio.Task[None]] = None
+
+BACKEND_DIR = Path(__file__).resolve().parent
+DATA_ROOT = Path(os.getenv("BILIBILI_DATA_DIR", str(BACKEND_DIR))).resolve()
+CACHE_DIR = DATA_ROOT / "cache"
+IMAGE_CACHE_DIR = CACHE_DIR / "images"
+DATA_EXPORT_DIR = DATA_ROOT / "data_exports"
+IMAGE_INDEX_FILE = CACHE_DIR / "downloaded_urls.json"
+for directory in (CACHE_DIR, IMAGE_CACHE_DIR, DATA_EXPORT_DIR):
+    directory.mkdir(parents=True, exist_ok=True)
+
+DEFAULT_ORIGINS = "http://127.0.0.1:3000,http://localhost:3000"
+ALLOWED_ORIGINS = {
+    origin.strip()
+    for origin in os.getenv("BILIBILI_ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",")
+    if origin.strip()
 }
 
-# JSON 数据导出目录
-DATA_EXPORT_DIR = Path(__file__).parent / "data_exports"
-DATA_EXPORT_DIR.mkdir(exist_ok=True)
-
-def get_export_dir_by_date() -> Path:
-    """获取按日期分类的数据导出目录"""
-    today = datetime.now().strftime("%Y%m%d")
-    date_dir = DATA_EXPORT_DIR / today
-    date_dir.mkdir(exist_ok=True)
-    return date_dir
-
-def get_export_filename() -> str:
-    """生成导出文件名（包含时间戳）"""
-    now = datetime.now()
-    return now.strftime("%H%M%S") + ".json"
-
-async def export_data_to_json(videos: List[dict]):
-    """导出数据到 JSON 文件，按日期时间分类"""
-    if not videos:
-        return None
-    
-    # 获取导出目录
-    export_dir = get_export_dir_by_date()
-    filename = get_export_filename()
-    file_path = export_dir / filename
-    
-    # 准备导出数据
-    export_data = {
-        "export_time": datetime.now().isoformat(),
-        "date": datetime.now().strftime("%Y-%m-%d"),
-        "time": datetime.now().strftime("%H:%M:%S"),
-        "total": len(videos),
-        "videos": videos
-    }
-    
-    # 写入 JSON 文件
-    async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
-        await f.write(json.dumps(export_data, ensure_ascii=False, indent=2))
-    
-    log_success(f"数据已导出到: {file_path}")
-    return file_path
-
-# 已下载图片URL集合（用于去重，持久化到磁盘避免重启后重复下载）
-downloaded_urls: Set[str] = set()
-URLS_CACHE_FILE = None  # 延迟初始化
-
-CACHE_DIR = Path(__file__).parent / "cache"
-CACHE_DIR.mkdir(exist_ok=True)
-IMAGE_CACHE_DIR = CACHE_DIR / "images"
-IMAGE_CACHE_DIR.mkdir(exist_ok=True)
-
-
-def _get_urls_cache_file() -> Path:
-    """延迟初始化_urls缓存文件路径"""
-    global URLS_CACHE_FILE
-    if URLS_CACHE_FILE is None:
-        URLS_CACHE_FILE = CACHE_DIR / "downloaded_urls.json"
-    return URLS_CACHE_FILE
-
-
-def _save_downloaded_urls():
-    """将已下载URL集合持久化到JSON文件"""
-    try:
-        with open(_get_urls_cache_file(), 'w', encoding='utf-8') as f:
-            json.dump(list(downloaded_urls), f, ensure_ascii=False)
-    except Exception:
-        pass  # 写入失败不影响主流程
-
-
-def _load_downloaded_urls():
-    """从JSON文件加载已下载URL集合"""
-    cache_file = _get_urls_cache_file()
-    if not cache_file.exists():
-        return
-    try:
-        with open(cache_file, 'r', encoding='utf-8') as f:
-            urls = json.load(f)
-        downloaded_urls.update(urls)
-        if downloaded_urls:
-            log_info(f"已加载 {len(downloaded_urls)} 个已下载图片URL（持久化缓存）")
-    except Exception:
-        pass
-
-
-def rebuild_downloaded_urls():
-    """启动时加载URL持久化文件，恢复已下载URL集合"""
-    _load_downloaded_urls()
-
-# B站 API 配置
 BILIBILI_API = "https://api.bilibili.com"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
     "Referer": "https://www.bilibili.com",
     "Origin": "https://www.bilibili.com",
     "Accept": "application/json, text/plain, */*",
@@ -236,531 +180,554 @@ HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
 }
 
-def log_info(message: str):
-    """记录信息日志"""
+image_index: Dict[str, str] = {}
+image_files_by_name: Dict[str, Path] = {}
+IMAGE_ROUTE_RE = re.compile(r"^[0-9a-f]{32}\.(?:jpg|jpeg|png|webp|gif)$")
+EXPORT_FILE_RE = re.compile(r"^\d{6}\.json$")
+
+
+def log_info(message: str) -> None:
     log_manager.add_log("INFO", message)
 
-def log_success(message: str):
-    """记录成功日志"""
+
+def log_success(message: str) -> None:
     log_manager.add_log("SUCCESS", message)
 
-def log_warning(message: str):
-    """记录警告日志"""
+
+def log_warning(message: str) -> None:
     log_manager.add_log("WARNING", message)
 
-def log_error(message: str):
-    """记录错误日志"""
+
+def log_error(message: str) -> None:
     log_manager.add_log("ERROR", message)
 
-def log_debug(message: str):
-    """记录调试日志"""
+
+def log_debug(message: str) -> None:
     log_manager.add_log("DEBUG", message)
 
-def get_image_dir_by_date() -> Path:
-    """获取按日期分类的图片目录"""
-    today = datetime.now().strftime("%Y%m%d")
-    date_dir = IMAGE_CACHE_DIR / today
-    date_dir.mkdir(exist_ok=True)
+
+def normalize_image_url(url: str) -> str:
+    return url.replace("http://", "https://", 1)
+
+
+def _image_extension(url: str) -> str:
+    suffix = Path(urlparse(url).path).suffix.lower().lstrip(".")
+    return suffix if suffix in {"jpg", "jpeg", "png", "webp", "gif"} else "jpg"
+
+
+def _image_filename(url: str) -> str:
+    normalized = normalize_image_url(url)
+    digest = hashlib.md5(normalized.encode("utf-8")).hexdigest()
+    return f"{digest}.{_image_extension(normalized)}"
+
+
+def _safe_child(root: Path, relative_path: str) -> Optional[Path]:
+    candidate = (root / relative_path).resolve()
+    try:
+        candidate.relative_to(root.resolve())
+    except ValueError:
+        return None
+    return candidate
+
+
+def rebuild_image_index() -> None:
+    """Build a constant-time URL-to-file index and migrate the legacy URL list."""
+    image_index.clear()
+    image_files_by_name.clear()
+    for path in IMAGE_CACHE_DIR.glob("*/*"):
+        if path.is_file():
+            image_files_by_name[path.name] = path
+
+    raw: Any = {}
+    if IMAGE_INDEX_FILE.exists():
+        try:
+            raw = json.loads(IMAGE_INDEX_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            log_warning(f"图片缓存索引读取失败，将重建: {exc}")
+
+    if isinstance(raw, dict):
+        for url, relative_path in raw.items():
+            if not isinstance(url, str) or not isinstance(relative_path, str):
+                continue
+            path = _safe_child(IMAGE_CACHE_DIR, relative_path)
+            if path and path.is_file():
+                image_index[normalize_image_url(url)] = relative_path.replace("\\", "/")
+    elif isinstance(raw, list):
+        for url in raw:
+            if isinstance(url, str):
+                _resolve_cached_image(url)
+
+    if image_index:
+        log_info(f"已加载 {len(image_index)} 个有效图片缓存")
+
+
+def _resolve_cached_image(url: str) -> Optional[str]:
+    normalized = normalize_image_url(url)
+    relative_path = image_index.get(normalized)
+    if relative_path:
+        path = _safe_child(IMAGE_CACHE_DIR, relative_path)
+        if path and path.is_file():
+            return f"/api/images/{relative_path.replace(os.sep, '/')}"
+        image_index.pop(normalized, None)
+
+    filenames = {_image_filename(url)}
+    original_digest = hashlib.md5(url.encode("utf-8")).hexdigest()
+    filenames.add(f"{original_digest}.{_image_extension(url)}")
+    for filename in filenames:
+        path = image_files_by_name.get(filename)
+        if path and path.is_file():
+            relative = path.relative_to(IMAGE_CACHE_DIR).as_posix()
+            image_index[normalized] = relative
+            return f"/api/images/{relative}"
+    return None
+
+
+def _save_image_index() -> None:
+    IMAGE_INDEX_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary = IMAGE_INDEX_FILE.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(image_index, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    os.replace(temporary, IMAGE_INDEX_FILE)
+
+
+async def download_image(session: aiohttp.ClientSession, url: str) -> tuple[str, bool]:
+    cached_url = _resolve_cached_image(url)
+    if cached_url:
+        return cached_url, True
+
+    normalized = normalize_image_url(url)
+    date = datetime.now().strftime("%Y%m%d")
+    date_dir = IMAGE_CACHE_DIR / date
+    date_dir.mkdir(parents=True, exist_ok=True)
+    filename = _image_filename(normalized)
+    target = date_dir / filename
+    temporary = target.with_suffix(target.suffix + ".tmp")
+
+    try:
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with session.get(normalized, headers=HEADERS, timeout=timeout) as response:
+            if response.status != 200:
+                raise CrawlError(f"HTTP {response.status}")
+            content = await response.read()
+            if not content:
+                raise CrawlError("响应内容为空")
+        async with aiofiles.open(temporary, "wb") as file:
+            await file.write(content)
+        await asyncio.to_thread(os.replace, temporary, target)
+        relative = target.relative_to(IMAGE_CACHE_DIR).as_posix()
+        image_index[normalized] = relative
+        image_files_by_name[filename] = target
+        return f"/api/images/{relative}", False
+    except Exception as exc:
+        with suppress(OSError):
+            temporary.unlink()
+        log_warning(f"图片下载失败: {url[:60]} ({exc})")
+        return url, False
+
+
+def get_export_dir_by_date() -> Path:
+    date_dir = DATA_EXPORT_DIR / datetime.now().strftime("%Y%m%d")
+    date_dir.mkdir(parents=True, exist_ok=True)
     return date_dir
 
-def get_image_path(url: str) -> tuple[Path, str]:
-    """
-    获取图片存储路径和URL
-    返回: (文件路径, 访问URL)
-    """
-    if not url:
-        return None, ""
-    
-    # 生成URL的hash作为文件名
-    url_hash = hashlib.md5(url.encode()).hexdigest()
-    ext = url.split('.')[-1].split('@')[0] if '.' in url else 'jpg'
-    if ext not in ['jpg', 'jpeg', 'png', 'webp', 'gif']:
-        ext = 'jpg'
-    
-    # 查找是否已存在（遍历所有日期目录）
-    for date_dir in IMAGE_CACHE_DIR.iterdir():
-        if date_dir.is_dir():
-            for img_file in date_dir.glob(f"{url_hash}.{ext}"):
-                if img_file.exists():
-                    # 已存在，返回现有路径
-                    relative_path = f"{date_dir.name}/{img_file.name}"
-                    return img_file, f"/api/images/{relative_path}"
-    
-    # 不存在，创建新路径（按日期分类）
-    date_dir = get_image_dir_by_date()
-    filename = f"{url_hash}.{ext}"
-    file_path = date_dir / filename
-    relative_path = f"{date_dir.name}/{filename}"
-    
-    return file_path, f"/api/images/{relative_path}"
 
-async def download_image(session: aiohttp.ClientSession, url: str) -> str:
-    """
-    下载图片并缓存，返回本地URL
-    使用URL hash去重，避免重复下载
-    """
-    if not url:
-        return ""
-    
-    # 标准化URL（移除协议差异）
-    normalized_url = url.replace("http://", "https://")
-    
-    # 检查是否已下载（内存集合命中即跳过）
-    if normalized_url in downloaded_urls:
-        log_debug(f"图片已缓存(跳过): {url[:50]}...")
-        _, local_url = get_image_path(url)
-        return local_url
+async def export_data_to_json(videos: List[dict]) -> Optional[Path]:
+    if not videos:
+        return None
+    now = datetime.now()
+    file_path = get_export_dir_by_date() / f"{now:%H%M%S}.json"
+    payload = {
+        "export_time": now.isoformat(),
+        "date": f"{now:%Y-%m-%d}",
+        "time": f"{now:%H:%M:%S}",
+        "total": len(videos),
+        "videos": videos,
+    }
+    temporary = file_path.with_suffix(".tmp")
+    async with aiofiles.open(temporary, "w", encoding="utf-8") as file:
+        await file.write(json.dumps(payload, ensure_ascii=False, indent=2))
+    await asyncio.to_thread(os.replace, temporary, file_path)
+    return file_path
 
-    # 获取存储路径
-    file_path, local_url = get_image_path(url)
 
-    # 如果文件已存在，直接返回
-    if file_path and file_path.exists():
-        downloaded_urls.add(normalized_url)
-        _save_downloaded_urls()
-        return local_url
-    
-    try:
-        # 下载图片
-        async with session.get(url, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status == 200:
-                content = await resp.read()
-                async with aiofiles.open(file_path, 'wb') as f:
-                    await f.write(content)
-                downloaded_urls.add(normalized_url)
-                _save_downloaded_urls()
-                log_debug(f"图片下载成功: {url[:50]}...")
-                return local_url
-            else:
-                log_warning(f"图片下载失败 HTTP {resp.status}: {url[:50]}...")
-    except Exception as e:
-        log_warning(f"图片下载失败: {url[:50]}... 错误: {str(e)}")
-    
-    return url  # 失败返回原URL
-
-async def fetch_page(session: aiohttp.ClientSession, page: int, page_size: int = 50) -> List[dict]:
-    """获取单页热门视频数据"""
+async def fetch_page(
+    session: aiohttp.ClientSession, page: int, page_size: int = 50
+) -> List[dict]:
     url = f"{BILIBILI_API}/x/web-interface/popular"
     params = {"ps": page_size, "pn": page}
-    
-    log_debug(f"请求第 {page} 页数据...")
-    
     try:
-        async with session.get(url, params=params, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-            log_debug(f"第 {page} 页响应状态: {resp.status}")
-            if resp.status != 200:
-                log_error(f"请求第 {page} 页失败: HTTP {resp.status}")
-                return []
-            data = await resp.json()
-            if data.get("code") == 0:
-                videos = data.get("data", {}).get("list", [])
-                log_success(f"第 {page} 页获取成功: {len(videos)} 个视频")
-                return videos
-            else:
-                log_error(f"API 错误: {data.get('message')}")
-                return []
-    except asyncio.TimeoutError:
-        log_error(f"请求第 {page} 页超时")
-        return []
-    except Exception as e:
-        log_error(f"请求第 {page} 页异常: {str(e)}")
-        return []
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with session.get(url, params=params, headers=HEADERS, timeout=timeout) as response:
+            if response.status != 200:
+                raise CrawlError(f"第 {page} 页 HTTP {response.status}")
+            payload = await response.json()
+    except asyncio.TimeoutError as exc:
+        raise CrawlError(f"第 {page} 页请求超时") from exc
+    except aiohttp.ClientError as exc:
+        raise CrawlError(f"第 {page} 页网络异常: {exc}") from exc
+
+    if payload.get("code") != 0:
+        raise CrawlError(f"第 {page} 页 API 错误: {payload.get('message', 'unknown')}")
+    videos = payload.get("data", {}).get("list")
+    if not isinstance(videos, list) or len(videos) != page_size:
+        actual = len(videos) if isinstance(videos, list) else 0
+        raise CrawlError(f"第 {page} 页数据不完整: 期望 {page_size}，实际 {actual}")
+    log_success(f"第 {page} 页获取成功: {len(videos)} 个视频")
+    return videos
+
+
+def validate_video_batch(videos: List[dict]) -> None:
+    if len(videos) != 100:
+        raise CrawlError(f"热门数据不完整: 期望 100，实际 {len(videos)}")
+    bvids = [video.get("bvid") for video in videos]
+    if len(set(bvids)) != 100 or None in bvids:
+        raise CrawlError("热门数据包含缺失或重复的 BV 号")
+    for rank, video in enumerate(videos, start=1):
+        video["rank"] = rank
+        try:
+            VideoItem.model_validate(video)
+        except Exception as exc:
+            raise CrawlError(f"第 {rank} 条视频字段无效: {exc}") from exc
+
+
+async def cache_video_images(session: aiohttp.ClientSession, videos: List[dict]) -> None:
+    references: Dict[str, Dict[str, Any]] = {}
+    for video in videos:
+        targets = [(video, "pic")]
+        owner = video.get("owner")
+        if isinstance(owner, dict):
+            targets.append((owner, "face"))
+        for item, key in targets:
+            url = item.get(key)
+            if not isinstance(url, str) or not url:
+                continue
+            normalized = normalize_image_url(url)
+            record = references.setdefault(normalized, {"url": url, "targets": []})
+            record["targets"].append((item, key))
+
+    semaphore = asyncio.Semaphore(10)
+
+    async def download(record: Dict[str, Any]) -> tuple[str, bool]:
+        async with semaphore:
+            return await download_image(session, record["url"])
+
+    records = list(references.values())
+    results = await asyncio.gather(*(download(record) for record in records))
+    cached_count = 0
+    downloaded_count = 0
+    failed_count = 0
+    for record, (local_url, was_cached) in zip(records, results):
+        if local_url.startswith("/api/images/"):
+            cached_count += int(was_cached)
+            downloaded_count += int(not was_cached)
+            for item, key in record["targets"]:
+                item[key] = local_url
+        else:
+            failed_count += 1
+
+    await asyncio.to_thread(_save_image_index)
+    log_success(
+        "图片处理完成: "
+        f"新下载 {downloaded_count} 张, 已缓存 {cached_count} 张, 失败 {failed_count} 张"
+    )
+
 
 async def crawl_hot100() -> List[dict]:
-    """爬取热门视频 TOP 100"""
-    log_info("=" * 50)
     log_info("开始爬取 B站热门视频 TOP 100")
-    log_info(f"当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    log_info("=" * 50)
-    
-    start_time = time.time()
-    
+    started = time.monotonic()
     async with aiohttp.ClientSession() as session:
-        # 并发获取两页数据
-        log_info("并发请求第1页和第2页数据...")
-        tasks = [
-            fetch_page(session, 1, 50),
-            fetch_page(session, 2, 50)
-        ]
-        results = await asyncio.gather(*tasks)
-        
-        all_videos = []
-        for page_videos in results:
-            all_videos.extend(page_videos)
-        
-        # 只取前100个
-        all_videos = all_videos[:100]
-        
-        log_info(f"共获取到 {len(all_videos)} 个视频")
-        
-        if not all_videos:
-            log_error("没有获取到任何视频数据")
-            return []
-        
-        log_info("开始下载图片资源...")
-        
-        # 收集所有唯一的图片URL
-        unique_image_urls = set()
-        image_mappings = []  # (item, key, url)
-        
-        for i, video in enumerate(all_videos):
-            video['rank'] = i + 1
-            # 视频封面
-            if video.get('pic'):
-                url = video['pic']
-                normalized = url.replace("http://", "https://")
-                if normalized not in unique_image_urls:
-                    unique_image_urls.add(normalized)
-                    image_mappings.append((video, 'pic', url))
-            # UP主头像
-            if video.get('owner', {}).get('face'):
-                url = video['owner']['face']
-                normalized = url.replace("http://", "https://")
-                if normalized not in unique_image_urls:
-                    unique_image_urls.add(normalized)
-                    image_mappings.append((video['owner'], 'face', url))
-        
-        log_info(f"需要下载 {len(image_mappings)} 张唯一图片 (已去重)")
-        
-        # 批量下载图片（限制并发数）
-        semaphore = asyncio.Semaphore(10)
-        downloaded = 0
-        skipped = 0
-        failed = 0
-        
-        async def download_with_limit(item, key, url):
-            nonlocal downloaded, skipped, failed
-            async with semaphore:
-                normalized = url.replace("http://", "https://")
-                if normalized in downloaded_urls:
-                    # 已下载过，直接获取路径
-                    _, local_url = get_image_path(url)
-                    if local_url:
-                        skipped += 1
-                        return item, key, local_url
-                
-                local_url = await download_image(session, url)
-                if local_url.startswith('/api/images/'):
-                    downloaded += 1
-                else:
-                    failed += 1
-                return item, key, local_url
-        
-        download_tasks = [download_with_limit(item, key, url) for item, key, url in image_mappings]
-        download_results = await asyncio.gather(*download_tasks, return_exceptions=True)
-        
-        # 更新URL为本地缓存地址
-        for result in download_results:
-            if isinstance(result, Exception):
-                log_error(f"图片下载异常: {str(result)}")
-                continue
-            item, key, local_url = result
-            if local_url:
-                item[key] = local_url
-        
-        elapsed = time.time() - start_time
-        log_success(f"图片处理完成: 新下载 {downloaded} 张, 已缓存跳过 {skipped} 张, 失败 {failed} 张")
-        log_success(f"数据爬取完成! 共 {len(all_videos)} 个视频, 耗时 {elapsed:.2f} 秒")
-        
-        # 导出数据到 JSON 文件
-        export_path = await export_data_to_json(all_videos)
-        if export_path:
-            log_success(f"JSON 数据已导出: {export_path}")
-        
-        log_info("=" * 50)
-        
-        return all_videos
+        pages = await asyncio.gather(fetch_page(session, 1), fetch_page(session, 2))
+        videos = [video for page in pages for video in page]
+        validate_video_batch(videos)
+        await cache_video_images(session, videos)
+    export_path = await export_data_to_json(videos)
+    log_success(f"数据爬取完成: 100 个视频, 耗时 {time.monotonic() - started:.2f} 秒")
+    if export_path:
+        log_info(f"JSON 数据已导出: {export_path}")
+    return videos
+
+
+async def _run_refresh(refresh_id: str) -> None:
+    async with refresh_lock:
+        try:
+            videos = await crawl_hot100()
+            timestamp = time.time()
+            cache["data"] = videos
+            cache["update_time"] = timestamp
+            cache["last_error"] = None
+            log_success(f"刷新完成: {len(videos)} 个视频")
+        except Exception as exc:
+            cache["last_error"] = str(exc)
+            log_error(f"刷新失败，保留现有缓存: {exc}")
+            raise
+        finally:
+            if cache["refresh_id"] == refresh_id:
+                cache["is_updating"] = False
+
+
+def schedule_refresh() -> tuple[asyncio.Task[None], bool]:
+    global current_refresh_task
+    if current_refresh_task and not current_refresh_task.done():
+        return current_refresh_task, False
+    refresh_id = uuid4().hex
+    cache["refresh_id"] = refresh_id
+    cache["is_updating"] = True
+    cache["last_error"] = None
+    current_refresh_task = asyncio.create_task(_run_refresh(refresh_id))
+    current_refresh_task.add_done_callback(_consume_refresh_exception)
+    return current_refresh_task, True
+
+
+def _consume_refresh_exception(task: asyncio.Task[None]) -> None:
+    """Retrieve background failures after state and logs have captured them."""
+    if not task.cancelled():
+        task.exception()
+
+
+def _cache_response(message: str, from_cache: bool) -> Hot100Response:
+    if not cache["data"] or not cache["update_time"]:
+        raise HTTPException(status_code=503, detail=cache["last_error"] or "数据尚未就绪")
+    return Hot100Response(
+        code=0,
+        message=message,
+        data=cache["data"],
+        update_time=datetime.fromtimestamp(cache["update_time"]).isoformat(),
+        from_cache=from_cache,
+    )
+
+
+def _origin_allowed(origin: Optional[str]) -> bool:
+    return not origin or origin in ALLOWED_ORIGINS
+
+
+def require_allowed_origin(request: Request) -> None:
+    if not _origin_allowed(request.headers.get("origin")):
+        raise HTTPException(status_code=403, detail="不允许的请求来源")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await log_manager.start()
+    rebuild_image_index()
+    log_info("B站热门视频 API 服务启动")
+    if os.getenv("BILIBILI_PRELOAD", "1").lower() not in {"0", "false", "no"}:
+        schedule_refresh()
+    try:
+        yield
+    finally:
+        if current_refresh_task and not current_refresh_task.done():
+            current_refresh_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await current_refresh_task
+        await log_manager.stop()
+
+
+app = FastAPI(title="B站热门视频 API", version="2.0.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=sorted(ALLOWED_ORIGINS),
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type"],
+)
+
 
 @app.get("/")
 async def root():
-    return {"message": "B站热门视频 API 服务运行中", "docs": "/docs", "version": "1.2.0"}
+    return {"message": "B站热门视频 API 服务运行中", "docs": "/docs", "version": "2.0.0"}
+
 
 @app.get("/api/hot100", response_model=Hot100Response)
 async def get_hot100(force_refresh: bool = False):
-    """
-    获取热门视频 TOP 100
-    - force_refresh: 是否强制刷新数据
-    """
-    global cache
-    
-    log_info(f"收到数据请求 (force_refresh={force_refresh})")
-    
-    # 检查缓存是否有效（5分钟内）
-    cache_valid = (
-        cache["data"] and 
-        cache["update_time"] and 
-        (time.time() - cache["update_time"] < 300) and  # 5分钟缓存
-        not force_refresh
+    now = time.time()
+    cache_valid = bool(
+        cache["data"]
+        and cache["update_time"]
+        and now - cache["update_time"] < 300
+        and not force_refresh
     )
-    
     if cache_valid:
-        log_info("返回缓存数据")
-        return Hot100Response(
-            code=0,
-            message="success (from cache)",
-            data=cache["data"],
-            update_time=datetime.fromtimestamp(cache["update_time"]).isoformat(),
-            from_cache=True
-        )
-    
-    # 如果正在更新，返回缓存数据
-    if cache["is_updating"] and cache["data"]:
-        log_info("正在更新中，返回缓存数据")
-        return Hot100Response(
-            code=0,
-            message="updating, returning cached data",
-            data=cache["data"],
-            update_time=datetime.fromtimestamp(cache["update_time"]).isoformat() if cache["update_time"] else None,
-            from_cache=True
-        )
-    
-    # 爬取新数据
-    try:
-        cache["is_updating"] = True
-        log_info("开始爬取新数据...")
-        videos = await crawl_hot100()
-        cache["data"] = videos
-        cache["update_time"] = time.time()
-        cache["is_updating"] = False
-        
-        log_success(f"数据更新完成: {len(videos)} 个视频")
-        
-        return Hot100Response(
-            code=0,
-            message="success",
-            data=videos,
-            update_time=datetime.now().isoformat(),
-            from_cache=False
-        )
-    except Exception as e:
-        cache["is_updating"] = False
-        log_error(f"爬取数据失败: {str(e)}")
-        # 如果有缓存，返回缓存数据
-        if cache["data"]:
-            log_warning("返回旧缓存数据")
-            return Hot100Response(
-                code=0,
-                message=f"error: {str(e)}, returning cached data",
-                data=cache["data"],
-                update_time=datetime.fromtimestamp(cache["update_time"]).isoformat() if cache["update_time"] else None,
-                from_cache=True
-            )
-        raise HTTPException(status_code=500, detail=str(e))
+        return _cache_response("success (from cache)", True)
 
-@app.post("/api/refresh")
-async def refresh_data(background_tasks: BackgroundTasks):
-    """后台刷新数据"""
-    global cache
-    
-    if cache["is_updating"]:
-        log_warning("刷新请求被拒绝: 正在更新中")
-        return {"code": -1, "message": "正在更新中，请稍后再试"}
-    
-    log_info("收到刷新请求，启动后台刷新任务")
-    
-    async def do_refresh():
+    if force_refresh:
+        task, _ = schedule_refresh()
         try:
-            cache["is_updating"] = True
-            log_info("后台刷新任务开始...")
-            videos = await crawl_hot100()
-            cache["data"] = videos
-            cache["update_time"] = time.time()
-            log_success(f"后台刷新完成: {len(videos)} 个视频")
-        except Exception as e:
-            log_error(f"后台刷新失败: {str(e)}")
-        finally:
-            cache["is_updating"] = False
-    
-    # 在后台执行刷新
-    asyncio.create_task(do_refresh())
-    
-    return {"code": 0, "message": "刷新任务已启动"}
+            await task
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return _cache_response("success", False)
 
-@app.get("/api/images/{date}/{filename}")
-async def get_image(date: str, filename: str):
-    """获取缓存的图片（按日期分类）"""
-    file_path = IMAGE_CACHE_DIR / date / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="图片不存在")
-    
-    # 根据文件扩展名设置 content-type
-    ext = filename.split('.')[-1].lower()
-    content_type_map = {
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'png': 'image/png',
-        'webp': 'image/webp',
-        'gif': 'image/gif'
+    if cache["data"]:
+        schedule_refresh()
+        return _cache_response("stale cache; refresh started", True)
+
+    task, _ = schedule_refresh()
+    try:
+        await task
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return _cache_response("success", False)
+
+
+@app.post("/api/refresh", status_code=202)
+async def refresh_data(request: Request):
+    require_allowed_origin(request)
+    _, started = schedule_refresh()
+    return {
+        "code": 0,
+        "message": "刷新任务已启动" if started else "刷新任务正在运行",
+        "refresh_id": cache["refresh_id"],
+        "is_updating": True,
     }
-    content_type = content_type_map.get(ext, 'image/jpeg')
-    
-    return FileResponse(file_path, media_type=content_type)
+
 
 @app.get("/api/status")
 async def get_status():
-    """获取服务状态"""
-    # 计算图片总数
-    total_images = 0
-    for date_dir in IMAGE_CACHE_DIR.iterdir():
-        if date_dir.is_dir():
-            total_images += len(list(date_dir.glob("*")))
-    
     return {
         "code": 0,
         "data": {
             "total_videos": len(cache["data"]),
-            "update_time": datetime.fromtimestamp(cache["update_time"]).isoformat() if cache["update_time"] else None,
+            "update_time": (
+                datetime.fromtimestamp(cache["update_time"]).isoformat()
+                if cache["update_time"]
+                else None
+            ),
             "is_updating": cache["is_updating"],
-            "cached_images": total_images,
-            "cached_urls": len(downloaded_urls)
-        }
+            "refresh_id": cache["refresh_id"],
+            "last_error": cache["last_error"],
+            "cached_images": len(image_files_by_name),
+            "cached_urls": len(image_index),
+        },
     }
+
+
+@app.get("/api/images/{date}/{filename}")
+async def get_image(date: str, filename: str):
+    if not re.fullmatch(r"\d{8}", date) or not IMAGE_ROUTE_RE.fullmatch(filename):
+        raise HTTPException(status_code=404, detail="图片不存在")
+    file_path = _safe_child(IMAGE_CACHE_DIR, f"{date}/{filename}")
+    if not file_path or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="图片不存在")
+    media_types = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "gif": "image/gif",
+    }
+    return FileResponse(file_path, media_type=media_types[file_path.suffix[1:].lower()])
+
 
 @app.get("/api/exports")
 async def get_exports():
-    """获取所有导出的 JSON 文件列表（按日期分类）"""
     exports = []
-    
-    if not DATA_EXPORT_DIR.exists():
-        return {"code": 0, "data": exports}
-    
-    # 遍历日期目录
     for date_dir in sorted(DATA_EXPORT_DIR.iterdir(), reverse=True):
-        if date_dir.is_dir():
-            date = date_dir.name
-            files = []
-            
-            # 获取该日期下的所有 JSON 文件
-            for json_file in sorted(date_dir.glob("*.json"), reverse=True):
-                stat = json_file.stat()
-                files.append({
+        if not date_dir.is_dir() or not re.fullmatch(r"\d{8}", date_dir.name):
+            continue
+        files = []
+        for json_file in sorted(date_dir.glob("*.json"), reverse=True):
+            stat = json_file.stat()
+            files.append(
+                {
                     "filename": json_file.name,
-                    "time": json_file.stem,  # HHMMSS
+                    "time": json_file.stem,
                     "size": stat.st_size,
                     "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
-                    "url": f"/api/exports/{date}/{json_file.name}"
-                })
-            
-            if files:
-                exports.append({
-                    "date": date,
-                    "formatted_date": f"{date[:4]}-{date[4:6]}-{date[6:]}",
+                    "url": f"/api/exports/{date_dir.name}/{json_file.name}",
+                }
+            )
+        if files:
+            exports.append(
+                {
+                    "date": date_dir.name,
+                    "formatted_date": (
+                        f"{date_dir.name[:4]}-{date_dir.name[4:6]}-{date_dir.name[6:]}"
+                    ),
                     "count": len(files),
-                    "files": files
-                })
-    
+                    "files": files,
+                }
+            )
     return {"code": 0, "data": exports}
 
-@app.get("/api/exports/{date}/{filename}")
-async def get_export_file(date: str, filename: str):
-    """获取指定的 JSON 导出文件"""
-    file_path = DATA_EXPORT_DIR / date / filename
-    
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="文件不存在")
-    
-    # 读取并返回 JSON 内容
-    async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-        content = await f.read()
-        data = json.loads(content)
-    
-    return {"code": 0, "data": data}
 
 @app.get("/api/exports/latest")
 async def get_latest_export():
-    """获取最新的导出文件"""
-    if not DATA_EXPORT_DIR.exists():
-        raise HTTPException(status_code=404, detail="没有导出文件")
-    
-    # 找到最新的日期目录
-    date_dirs = sorted([d for d in DATA_EXPORT_DIR.iterdir() if d.is_dir()], reverse=True)
-    if not date_dirs:
-        raise HTTPException(status_code=404, detail="没有导出文件")
-    
-    # 找到最新的文件
-    latest_date_dir = date_dirs[0]
-    json_files = sorted(latest_date_dir.glob("*.json"), reverse=True)
-    
-    if not json_files:
-        raise HTTPException(status_code=404, detail="没有导出文件")
-    
-    # 读取最新的文件
-    latest_file = json_files[0]
-    async with aiofiles.open(latest_file, 'r', encoding='utf-8') as f:
-        content = await f.read()
-        data = json.loads(content)
-    
-    return {
-        "code": 0,
-        "data": data,
-        "file_info": {
-            "date": latest_date_dir.name,
-            "filename": latest_file.name,
-            "path": f"/api/exports/{latest_date_dir.name}/{latest_file.name}"
-        }
-    }
+    date_dirs = sorted(
+        [path for path in DATA_EXPORT_DIR.iterdir() if re.fullmatch(r"\d{8}", path.name)],
+        reverse=True,
+    )
+    for date_dir in date_dirs:
+        json_files = sorted(date_dir.glob("*.json"), reverse=True)
+        if json_files:
+            latest_file = json_files[0]
+            async with aiofiles.open(latest_file, "r", encoding="utf-8") as file:
+                data = json.loads(await file.read())
+            return {
+                "code": 0,
+                "data": data,
+                "file_info": {
+                    "date": date_dir.name,
+                    "filename": latest_file.name,
+                    "path": f"/api/exports/{date_dir.name}/{latest_file.name}",
+                },
+            }
+    raise HTTPException(status_code=404, detail="没有导出文件")
 
-# WebSocket 日志接口
+
+@app.get("/api/exports/{date}/{filename}")
+async def get_export_file(date: str, filename: str):
+    if not re.fullmatch(r"\d{8}", date) or not EXPORT_FILE_RE.fullmatch(filename):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    file_path = _safe_child(DATA_EXPORT_DIR, f"{date}/{filename}")
+    if not file_path or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    async with aiofiles.open(file_path, "r", encoding="utf-8") as file:
+        data = json.loads(await file.read())
+    return {"code": 0, "data": data}
+
+
 @app.websocket("/api/logs/ws")
 async def websocket_logs(websocket: WebSocket):
-    """WebSocket 实时日志推送"""
+    if not _origin_allowed(websocket.headers.get("origin")):
+        await websocket.close(code=1008)
+        return
     await log_manager.connect(websocket)
     log_info(f"新的日志客户端连接，当前连接数: {len(log_manager.websockets)}")
     try:
         while True:
-            # 保持连接，接收客户端消息
-            data = await websocket.receive_text()
+            raw = await websocket.receive_text()
             try:
-                msg = json.loads(data)
-                if msg.get("action") == "clear":
-                    log_manager.clear()
-                    await websocket.send_json({"type": "cleared"})
-                    log_info("日志已被客户端清空")
-            except:
-                pass
+                message = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if message.get("action") == "clear":
+                log_manager.clear()
+                await websocket.send_json({"type": "cleared"})
     except WebSocketDisconnect:
+        pass
+    finally:
         await log_manager.disconnect(websocket)
-        log_info(f"日志客户端断开连接，当前连接数: {len(log_manager.websockets)}")
+
 
 @app.get("/api/logs")
 async def get_logs():
-    """获取历史日志"""
-    return {
-        "code": 0,
-        "data": log_manager.get_logs()
-    }
+    return {"code": 0, "data": log_manager.get_logs()}
+
 
 @app.delete("/api/logs")
-async def clear_logs():
-    """清空日志"""
+async def clear_logs(request: Request):
+    require_allowed_origin(request)
     log_manager.clear()
     return {"code": 0, "message": "日志已清空"}
 
-@app.on_event("startup")
-async def startup_event():
-    """启动时预加载数据"""
-    log_info("=" * 50)
-    log_info("B站热门视频 API 服务启动")
-    log_info(f"服务地址: http://0.0.0.0:8000")
-    log_info("=" * 50)
-
-    # 重建已下载URL集合，避免重启后重复下载已有图片
-    rebuild_downloaded_urls()
-
-    # 延迟2秒后预加载数据
-    await asyncio.sleep(2)
-    log_info("开始预加载数据...")
-    try:
-        cache["is_updating"] = True
-        videos = await crawl_hot100()
-        cache["data"] = videos
-        cache["update_time"] = time.time()
-        cache["is_updating"] = False
-        log_success(f"预加载完成，共 {len(videos)} 个视频")
-    except Exception as e:
-        cache["is_updating"] = False
-        log_error(f"预加载失败: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    uvicorn.run(
+        app,
+        host=os.getenv("BILIBILI_HOST", "127.0.0.1"),
+        port=int(os.getenv("BILIBILI_PORT", "8000")),
+    )

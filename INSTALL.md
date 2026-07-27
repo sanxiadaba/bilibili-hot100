@@ -90,7 +90,7 @@ Test the installation:
 
 1. Say: "启动bilibili项目"
 2. AI should immediately run the launcher
-3. Browser should open to http://localhost:3000
+3. Browser should open to http://127.0.0.1:3000
 
 ## Troubleshooting
 
@@ -99,8 +99,8 @@ Test the installation:
 - Check file permissions (chmod +x on Unix)
 
 **Ports blocked:**
-- Run as Administrator (Windows)
-- Check firewall settings
+- Run `Get-NetTCPConnection -State Listen -LocalPort 3000,8000` to identify the owner
+- Stop the conflicting application; the launcher intentionally does not kill unrelated processes
 
 **Dependencies missing:**
-- Install Python 3.8+ and Node.js 16+
+- Install Python 3.9+ and Node.js 22.12+

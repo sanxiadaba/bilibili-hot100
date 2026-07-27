@@ -2,8 +2,10 @@
   <n-button
     circle
     quaternary
+    class="theme-toggle"
     @click="themeStore.toggleTheme"
     :title="themeStore.isDark ? '切换到浅色模式' : '切换到深色模式'"
+    :aria-label="themeStore.isDark ? '切换到浅色模式' : '切换到深色模式'"
   >
     <template #icon>
       <n-icon :size="20">

@@ -5,7 +5,11 @@
         <n-tag
           :type="videoStore.selectedCategory === 'all' ? 'primary' : 'default'"
           :bordered="videoStore.selectedCategory !== 'all'"
+          role="button"
+          tabindex="0"
           @click="selectCategory('all')"
+          @keydown.enter="selectCategory('all')"
+          @keydown.space.prevent="selectCategory('all')"
           class="filter-tag"
         >
           <template #icon>
@@ -19,7 +23,11 @@
           :key="cat.name"
           :type="videoStore.selectedCategory === cat.name ? 'primary' : 'default'"
           :bordered="videoStore.selectedCategory !== cat.name"
+          role="button"
+          tabindex="0"
           @click="selectCategory(cat.name)"
+          @keydown.enter="selectCategory(cat.name)"
+          @keydown.space.prevent="selectCategory(cat.name)"
           class="filter-tag"
         >
           {{ cat.name }} ({{ cat.count }})
@@ -29,7 +37,11 @@
           v-if="videoStore.categories.length > maxCategories"
           type="default"
           bordered
+          role="button"
+          tabindex="0"
           @click="showAllCategories = !showAllCategories"
+          @keydown.enter="showAllCategories = !showAllCategories"
+          @keydown.space.prevent="showAllCategories = !showAllCategories"
           class="filter-tag more-tag"
         >
           {{ showAllCategories ? '收起' : `更多 (${videoStore.categories.length - maxCategories})` }}
@@ -42,7 +54,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { NSpace, NTag, NIcon } from 'naive-ui'
-import { GridOutline, ChevronDownOutline, ChevronUpOutline } from '@vicons/ionicons5'
+import { GridOutline } from '@vicons/ionicons5'
 import { useVideoStore } from '@/stores/videos'
 
 const videoStore = useVideoStore()
@@ -103,6 +115,11 @@ const selectCategory = (cat: string) => {
 .filter-tag:hover {
   transform: translateY(-2px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.filter-tag:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
 }
 
 .more-tag {

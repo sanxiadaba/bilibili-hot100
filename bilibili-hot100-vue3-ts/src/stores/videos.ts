@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { fetchHot100, refreshData } from '@/api/backend'
+import { fetchHot100, getStatus, refreshData } from '@/api/backend'
 import type { VideoItem, CategoryStat, StatsData, SortType } from '@/types'
 
 export const useVideoStore = defineStore('videos', () => {
@@ -105,6 +105,7 @@ export const useVideoStore = defineStore('videos', () => {
       avgViews: Math.round(totalViews / videos.value.length),
       avgLikes: Math.round(totalLikes / videos.value.length),
       categoryStats,
+      allVideos: videos.value,
       topVideos,
       mostLiked
     }
@@ -129,9 +130,23 @@ export const useVideoStore = defineStore('videos', () => {
     refreshing.value = true
     error.value = null
     try {
-      await refreshData()
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      const result = await fetchHot100(true)
+      const refresh = await refreshData()
+      const deadline = Date.now() + 90_000
+
+      while (Date.now() < deadline) {
+        const status = await getStatus()
+        if (status.refresh_id === refresh.refresh_id && !status.is_updating) {
+          if (status.last_error) throw new Error(status.last_error)
+          break
+        }
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+
+      const finalStatus = await getStatus()
+      if (finalStatus.is_updating) throw new Error('刷新超时，请稍后重试')
+      if (finalStatus.last_error) throw new Error(finalStatus.last_error)
+
+      const result = await fetchHot100()
       videos.value = result.videos
       lastUpdateTime.value = result.updateTime
       fromCache.value = result.fromCache
@@ -156,6 +171,10 @@ export const useVideoStore = defineStore('videos', () => {
     sortBy.value = sort
   }
 
+  const clearError = (): void => {
+    error.value = null
+  }
+
   return {
     videos,
     loading,
@@ -173,6 +192,7 @@ export const useVideoStore = defineStore('videos', () => {
     refreshVideos,
     setCategory,
     setSearch,
-    setSort
+    setSort,
+    clearError
   }
 })

@@ -1,84 +1,40 @@
-# B站热门视频 TOP 100 - TypeScript 前端
+# B站热门视频 TOP 100 前端
 
-使用 Vue 3 + TypeScript + Pinia + Naive UI + ECharts 重构的前端项目。
+Vue 3、TypeScript、Pinia、Naive UI 和 ECharts 6 实现的响应式热榜界面。
 
-## 特性
+## 环境
 
-- **TypeScript 全类型支持** - 完整的类型定义和类型安全
-- **4列视频网格布局** - 充分利用桌面端屏幕空间
-- **白天/黑夜主题切换** - 支持自动保存主题偏好
-- **实时日志查看器** - WebSocket 连接查看后端日志
-- **数据分析图表** - ECharts 可视化展示数据统计
-- **分类筛选和排序** - 多维度视频筛选和排序
+- Node.js 22.12+
+- 后端服务：http://127.0.0.1:8000
 
-## 项目结构
-
-```
-src/
-├── api/
-│   └── backend.ts      # API 请求封装
-├── components/
-│   ├── AppHeader.vue   # 顶部导航栏
-│   ├── CategoryFilter.vue  # 分类筛选
-│   ├── LogViewer.vue   # 日志查看器
-│   ├── StatsCharts.vue # 统计图表
-│   ├── StatsView.vue   # 数据分析页面
-│   ├── ThemeToggle.vue # 主题切换按钮
-│   ├── VideoCard.vue   # 视频卡片组件
-│   └── VideoList.vue   # 视频列表 (4列布局)
-├── stores/
-│   ├── theme.ts        # 主题状态管理
-│   └── videos.ts       # 视频数据状态管理
-├── types/
-│   └── index.ts        # TypeScript 类型定义
-├── utils/
-│   └── format.ts       # 格式化工具函数
-├── App.vue
-└── main.ts
-```
-
-## 启动步骤
-
-### 1. 安装依赖
+建议从项目根目录运行 `start-all.bat` 或 `start-all.sh`。单独开发前端时：
 
 ```bash
-cd C:\qoder_work\bilibili-hot100-vue3-ts
-npm install
-```
-
-### 2. 启动开发服务器
-
-```bash
+npm ci
 npm run dev
 ```
 
-前端服务将在 http://localhost:3003 启动
+前端地址为 http://127.0.0.1:3000，`/api` 由 Vite 代理到后端。
 
-### 3. 确保后端服务已启动
-
-后端服务需要在 http://localhost:8000 运行。
+## 检查命令
 
 ```bash
-cd C:\qoder_work\bilibili-hot100-backend
-# 确保已安装依赖
-pip install -r requirements.txt
-# 启动后端
-python main.py
+npm run typecheck
+npm run build
+npm run test:e2e
+npm audit
 ```
 
-## 技术栈
+E2E 需要前后端服务已经启动；首次运行前执行 `npx playwright install chromium`。
 
-- Vue 3.4 + Composition API
-- TypeScript 5.3
-- Pinia 状态管理
-- Naive UI 组件库
-- ECharts 图表库
-- Vite 构建工具
+## 结构
 
-## 布局说明
-
-视频网格采用响应式4列布局：
-- 大屏幕 (1600px+): 4列
-- 中等屏幕 (1200px): 3列
-- 小屏幕 (900px): 2列
-- 移动端 (600px): 1列
+```text
+src/
+├── api/          # 后端 API 封装
+├── components/   # 页面组件
+├── stores/       # Pinia 状态与统计
+├── types/        # TypeScript 数据契约
+└── utils/        # 格式化工具
+tests/            # Playwright E2E
+```

@@ -14,7 +14,12 @@
             v-for="(video, index) in detailVideos"
             :key="video.bvid"
             class="detail-item"
+            role="link"
+            tabindex="0"
+            :aria-label="`打开视频：${video.title}`"
             @click="openVideo(video.bvid)"
+            @keydown.enter="openVideo(video.bvid)"
+            @keydown.space.prevent="openVideo(video.bvid)"
           >
             <div class="detail-rank">{{ index + 1 }}</div>
             <div class="detail-cover">
@@ -22,7 +27,7 @@
                 :src="getImageUrl(video.pic || 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg')"
                 class="detail-img"
                 loading="lazy"
-                @error="$event.target.src = 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg'"
+                @error="useFallbackImage"
               />
             </div>
             <div class="detail-info">
@@ -44,7 +49,7 @@
     <n-card title="数据概览" class="stats-overview">
       <n-grid :cols="4" :x-gap="24" :y-gap="24" responsive="screen">
         <n-gi>
-          <div class="overview-item" @click="showDetail('views')">
+          <div class="overview-item" role="button" tabindex="0" aria-label="查看播放量前十" @click="showDetail('views')" @keydown.enter="showDetail('views')" @keydown.space.prevent="showDetail('views')">
             <div class="overview-icon" style="background: linear-gradient(135deg, #fb7299, #ff8eb4);">
               <n-icon :component="EyeOutline" :size="28" color="#fff" />
             </div>
@@ -59,7 +64,7 @@
         </n-gi>
 
         <n-gi>
-          <div class="overview-item" @click="showDetail('likes')">
+          <div class="overview-item" role="button" tabindex="0" aria-label="查看点赞前十" @click="showDetail('likes')" @keydown.enter="showDetail('likes')" @keydown.space.prevent="showDetail('likes')">
             <div class="overview-icon" style="background: linear-gradient(135deg, #ffd700, #ffaa00);">
               <n-icon :component="ThumbsUpOutline" :size="28" color="#fff" />
             </div>
@@ -74,7 +79,7 @@
         </n-gi>
 
         <n-gi>
-          <div class="overview-item" @click="showDetail('favorites')">
+          <div class="overview-item" role="button" tabindex="0" aria-label="查看收藏前十" @click="showDetail('favorites')" @keydown.enter="showDetail('favorites')" @keydown.space.prevent="showDetail('favorites')">
             <div class="overview-icon" style="background: linear-gradient(135deg, #3a7bd5, #00d2ff);">
               <n-icon :component="HeartOutline" :size="28" color="#fff" />
             </div>
@@ -89,7 +94,7 @@
         </n-gi>
 
         <n-gi>
-          <div class="overview-item" @click="showDetail('coins')">
+          <div class="overview-item" role="button" tabindex="0" aria-label="查看投币前十" @click="showDetail('coins')" @keydown.enter="showDetail('coins')" @keydown.space.prevent="showDetail('coins')">
             <div class="overview-icon" style="background: linear-gradient(135deg, #9c27b0, #e91e63);">
               <n-icon :component="CashOutline" :size="28" color="#fff" />
             </div>
@@ -108,7 +113,7 @@
 
       <n-grid :cols="4" :x-gap="24" :y-gap="24" responsive="screen">
         <n-gi>
-          <div class="sub-stat" @click="showDetail('danmaku')">
+          <div class="sub-stat" role="button" tabindex="0" aria-label="查看弹幕前十" @click="showDetail('danmaku')" @keydown.enter="showDetail('danmaku')" @keydown.space.prevent="showDetail('danmaku')">
             <div class="sub-stat-icon">
               <n-icon :component="ChatbubbleOutline" :size="20" />
             </div>
@@ -117,7 +122,7 @@
           </div>
         </n-gi>
         <n-gi>
-          <div class="sub-stat" @click="showDetail('reply')">
+          <div class="sub-stat" role="button" tabindex="0" aria-label="查看评论前十" @click="showDetail('reply')" @keydown.enter="showDetail('reply')" @keydown.space.prevent="showDetail('reply')">
             <div class="sub-stat-icon">
               <n-icon :component="ChatboxOutline" :size="20" />
             </div>
@@ -126,7 +131,7 @@
           </div>
         </n-gi>
         <n-gi>
-          <div class="sub-stat" @click="showDetail('share')">
+          <div class="sub-stat" role="button" tabindex="0" aria-label="查看分享前十" @click="showDetail('share')" @keydown.enter="showDetail('share')" @keydown.space.prevent="showDetail('share')">
             <div class="sub-stat-icon">
               <n-icon :component="ShareSocialOutline" :size="20" />
             </div>
@@ -135,7 +140,7 @@
           </div>
         </n-gi>
         <n-gi>
-          <div class="sub-stat" @click="showDetail('avgViews')">
+          <div class="sub-stat" role="button" tabindex="0" aria-label="查看播放量前十" @click="showDetail('avgViews')" @keydown.enter="showDetail('avgViews')" @keydown.space.prevent="showDetail('avgViews')">
             <div class="sub-stat-icon">
               <n-icon :component="TrendingUpOutline" :size="20" />
             </div>
@@ -154,14 +159,19 @@
           v-for="(video, index) in stats.mostLiked" 
           :key="video.bvid"
           class="top-liked-item"
+          role="link"
+          tabindex="0"
+          :aria-label="`打开视频：${video.title}`"
           @click="openVideo(video.bvid)"
+          @keydown.enter="openVideo(video.bvid)"
+          @keydown.space.prevent="openVideo(video.bvid)"
         >
           <div class="top-liked-cover">
             <img
               :src="getImageUrl(video.pic || 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg')"
               class="top-liked-img"
               loading="lazy"
-              @error="$event.target.src = 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg'"
+              @error="useFallbackImage"
             />
             <div class="top-liked-rank" :class="`rank-${index + 1}`">
               <template v-if="index === 0">
@@ -196,24 +206,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import {
   NCard,
   NGrid,
   NGi,
   NIcon,
-  NText,
   NTag,
   NAvatar,
-  NSpace,
   NDivider,
-  NList,
-  NListItem,
-  NThing,
-  NImage,
   NModal,
-  NEmpty,
-  useMessage
+  NEmpty
 } from 'naive-ui'
 import {
   EyeOutline,
@@ -224,22 +227,20 @@ import {
   ChatbubbleOutline,
   ChatboxOutline,
   ShareSocialOutline,
-  TrendingUpOutline,
-  LinkOutline
+  TrendingUpOutline
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { formatNumber } from '@/utils/format'
 import { getImageUrl } from '@/api/backend'
-import StatsCharts from './StatsCharts.vue'
-import type { StatsData } from '@/types'
+import type { StatsData, VideoItem } from '@/types'
+
+const StatsCharts = defineAsyncComponent(() => import('./StatsCharts.vue'))
 
 const props = defineProps<{
   stats: StatsData
 }>()
 
 const themeStore = useThemeStore()
-const message = useMessage()
-
 // 详情弹窗状态
 const showDetailModal = ref(false)
 const detailType = ref('')
@@ -260,7 +261,7 @@ const detailTitle = computed(() => {
 const detailVideos = computed(() => {
   if (!props.stats) return []
   
-  const videos = [...props.stats.topVideos]
+  const videos = [...props.stats.allVideos]
   
   switch (detailType.value) {
     case 'views':
@@ -283,7 +284,7 @@ const detailVideos = computed(() => {
   }
 })
 
-const getVideoStat = (video: any, type: string): number => {
+const getVideoStat = (video: VideoItem, type: string): number => {
   switch (type) {
     case 'views':
     case 'avgViews':
@@ -325,7 +326,12 @@ const showDetail = (type: string) => {
 }
 
 const openVideo = (bvid: string) => {
-  window.open(`https://www.bilibili.com/video/${bvid}`, '_blank')
+  window.open(`https://www.bilibili.com/video/${bvid}`, '_blank', 'noopener,noreferrer')
+}
+
+const useFallbackImage = (event: Event) => {
+  const image = event.currentTarget as HTMLImageElement
+  image.src = 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg'
 }
 </script>
 
@@ -379,6 +385,14 @@ const openVideo = (bvid: string) => {
 .overview-item:hover {
   transform: translateY(-4px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+}
+
+.detail-item:focus-visible,
+.overview-item:focus-visible,
+.sub-stat:focus-visible,
+.top-liked-item:focus-visible {
+  outline: 3px solid #1677ff;
+  outline-offset: 3px;
 }
 
 .overview-icon {

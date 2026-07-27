@@ -70,7 +70,10 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { NCard, NGrid, NGi } from 'naive-ui'
-import * as echarts from 'echarts'
+import { BarChart, PieChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { graphic, init, use, type ECharts } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
 import { useThemeStore } from '@/stores/theme'
 import { formatNumber } from '@/utils/format'
 import type { StatsData } from '@/types'
@@ -79,25 +82,27 @@ const props = defineProps<{
   stats: StatsData
 }>()
 
+use([BarChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
+
 const themeStore = useThemeStore()
 
 const categoryChartRef = ref<HTMLDivElement | null>(null)
 const viewsChartRef = ref<HTMLDivElement | null>(null)
 const topVideosChartRef = ref<HTMLDivElement | null>(null)
 
-let categoryChart: echarts.ECharts | null = null
-let viewsChart: echarts.ECharts | null = null
-let topVideosChart: echarts.ECharts | null = null
+let categoryChart: ECharts | null = null
+let viewsChart: ECharts | null = null
+let topVideosChart: ECharts | null = null
 
 const initCharts = () => {
   if (categoryChartRef.value) {
-    categoryChart = echarts.init(categoryChartRef.value)
+    categoryChart = init(categoryChartRef.value)
   }
   if (viewsChartRef.value) {
-    viewsChart = echarts.init(viewsChartRef.value)
+    viewsChart = init(viewsChartRef.value)
   }
   if (topVideosChartRef.value) {
-    topVideosChart = echarts.init(topVideosChartRef.value)
+    topVideosChart = init(topVideosChartRef.value)
   }
   updateCharts()
 }
@@ -187,7 +192,7 @@ const updateCharts = () => {
         type: 'bar',
         data: sortedCategories.map(([, stat]) => stat.views),
         itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          color: new graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: '#fb7299' },
             { offset: 1, color: '#ff8eb4' }
           ]),
@@ -236,7 +241,7 @@ const updateCharts = () => {
         type: 'bar',
         data: top10.map(v => v.stat?.view || 0),
         itemStyle: {
-          color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
+          color: new graphic.LinearGradient(1, 0, 0, 0, [
             { offset: 0, color: '#3a7bd5' },
             { offset: 1, color: '#00d2ff' }
           ]),

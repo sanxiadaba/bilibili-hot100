@@ -11,6 +11,15 @@
           />
 
           <main class="main-content">
+            <n-alert
+              v-if="videoStore.error"
+              type="error"
+              closable
+              class="error-alert"
+              @close="videoStore.clearError"
+            >
+              {{ videoStore.error }}
+            </n-alert>
             <n-spin :show="videoStore.loading && !videoStore.videos.length" size="large">
               <template #description>
                 加载中...
@@ -24,6 +33,7 @@
               <VideoList
                 v-else
                 :videos="videoStore.filteredVideos"
+                :loading="videoStore.loading"
                 @refresh="handleRefresh"
               />
             </n-spin>
@@ -39,22 +49,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { defineAsyncComponent, onMounted, ref } from 'vue'
 import {
   NConfigProvider,
   NMessageProvider,
   NDialogProvider,
   NSpin,
   NBackTop,
-  darkTheme,
-  type GlobalThemeOverrides
+  NAlert,
+  darkTheme
 } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 import { useVideoStore } from '@/stores/videos'
 import AppHeader from '@/components/AppHeader.vue'
 import VideoList from '@/components/VideoList.vue'
-import StatsView from '@/components/StatsView.vue'
-import LogViewer from '@/components/LogViewer.vue'
+
+const StatsView = defineAsyncComponent(() => import('@/components/StatsView.vue'))
+const LogViewer = defineAsyncComponent(() => import('@/components/LogViewer.vue'))
 
 const themeStore = useThemeStore()
 const videoStore = useVideoStore()
@@ -62,24 +73,13 @@ const videoStore = useVideoStore()
 const showStatsView = ref(false)
 const showLogViewer = ref(false)
 
-
-
 const handleRefresh = async () => {
-  const success = await videoStore.refreshVideos()
-  console.log('刷新结果:', success)
-  console.log('错误信息:', videoStore.error)
+  await videoStore.refreshVideos()
 }
 
 const toggleStatsView = () => {
   showStatsView.value = !showStatsView.value
 }
-
-// Watch for errors
-watch(() => videoStore.error, (error) => {
-  if (error) {
-    console.error('错误:', error)
-  }
-})
 
 onMounted(() => {
   videoStore.loadVideos()
@@ -114,6 +114,10 @@ html, body {
   max-width: 1800px;
   margin: 0 auto;
   padding: 16px 24px;
+}
+
+.error-alert {
+  margin-bottom: 16px;
 }
 
 @media (max-width: 768px) {

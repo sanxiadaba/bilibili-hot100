@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Hot100Response, LogEntry } from '@/types'
+import type { BackendStatus, Hot100Response, LogEntry, RefreshResponse } from '@/types'
 
 const backend = axios.create({
   baseURL: '/api',
@@ -27,18 +27,12 @@ export const fetchHot100 = async (forceRefresh = false): Promise<{
   throw new Error(response.data.message)
 }
 
-export const refreshData = async (): Promise<{ code: number; message: string }> => {
-  const response = await backend.post('/refresh')
+export const refreshData = async (): Promise<RefreshResponse> => {
+  const response = await backend.post<RefreshResponse>('/refresh')
   return response.data
 }
 
-export const getStatus = async (): Promise<{
-  total_videos: number
-  update_time: string | null
-  is_updating: boolean
-  cached_images: number
-  cached_urls: number
-}> => {
+export const getStatus = async (): Promise<BackendStatus> => {
   const response = await backend.get('/status')
   return response.data.data
 }

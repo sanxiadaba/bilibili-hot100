@@ -2,7 +2,12 @@
   <n-card
     :class="['video-card', { 'dark': themeStore.isDark }]"
     hoverable
+    role="link"
+    tabindex="0"
+    :aria-label="`打开视频：${video.title}`"
     @click="openVideo"
+    @keydown.enter="openVideo"
+    @keydown.space.prevent="openVideo"
   >
     <div class="card-content">
       <div class="rank-badge" :class="rankClass">
@@ -100,7 +105,11 @@ const onAvatarError = () => {
 }
 
 const openVideo = () => {
-  window.open(`https://www.bilibili.com/video/${props.video.bvid}`, '_blank')
+  window.open(
+    `https://www.bilibili.com/video/${props.video.bvid}`,
+    '_blank',
+    'noopener,noreferrer'
+  )
 }
 </script>
 
@@ -117,6 +126,11 @@ const openVideo = () => {
 .video-card:hover {
   transform: translateY(-6px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.video-card:focus-visible {
+  outline: 3px solid #1677ff;
+  outline-offset: 3px;
 }
 
 .video-card :deep(.n-card__content) {
