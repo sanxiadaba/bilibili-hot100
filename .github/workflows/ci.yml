@@ -87,7 +87,7 @@ jobs:
           nohup python -m uvicorn main:app --host 127.0.0.1 --port 8000 &
       - name: Start frontend
         working-directory: bilibili-hot100-vue3-ts
-        run: nohup npm run dev &
+        run: nohup npm run dev -- --host 127.0.0.1 --port 3000 &
       - name: Wait for services
         run: |
           for url in http://127.0.0.1:8000/api/status http://127.0.0.1:3000; do

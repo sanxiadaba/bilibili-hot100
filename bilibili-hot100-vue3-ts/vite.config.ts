@@ -22,6 +22,7 @@ export default defineConfig({
     }
   },
   server: {
+    host: '127.0.0.1',
     port: 3000,
     // Fail loudly instead of silently moving to :3001, which would break the
     // backend origin allow-list (refresh and the log stream would 403).
@@ -29,6 +30,7 @@ export default defineConfig({
     proxy
   },
   preview: {
+    host: '127.0.0.1',
     port: 4173,
     strictPort: true,
     proxy
