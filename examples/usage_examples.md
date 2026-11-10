@@ -4,68 +4,42 @@
 
 **User:** 我想启动bilibili项目
 
+**AI runs:** `.\start-all.bat --detached --json`
+
 **AI Response:**
 ```
 正在为您启动 Bilibili Hot100 项目...
 
-[1/4] 检查后端口 8000...
-  端口 8000 可用
-
-[2/4] 检查前端端口 3000...
-  端口 3000 可用
-
-[3/4] 启动后端服务...
-  后端启动中: http://localhost:8000
-  等待后端就绪...
-  后端已就绪!
-
-[4/4] 启动前端服务...
-  正在打开浏览器...
-
-========================================
-  所有服务启动成功!
-========================================
+Starting backend (FastAPI on :8000)...
+  Backend is ready: http://127.0.0.1:8000
+Starting frontend (Vite on :3000)...
+  Frontend is ready: http://127.0.0.1:3000
 
 访问地址:
-  前端: http://localhost:3000
-  后端: http://localhost:8000
-  API文档: http://localhost:8000/docs
-
-按 Ctrl+C 停止所有服务
+  前端: http://127.0.0.1:3000
+  后端: http://127.0.0.1:8000
+  API文档: http://127.0.0.1:8000/docs
 ```
 
 ## Example 2: English User
 
 **User:** How do I run the bilibili project?
 
+**AI runs:** `.\start-all.bat --detached --json`
+
 **AI Response:**
 ```
 Starting Bilibili Hot100 project for you...
 
-[1/4] Checking backend port 8000...
-  Port 8000 is free
-
-[2/4] Checking frontend port 3000...
-  Port 3000 is free
-
-[3/4] Starting backend service...
-  Backend starting: http://localhost:8000
-  Waiting for backend to be ready...
-  Backend is ready!
-
-[4/4] Starting frontend service...
-  Opening browser...
-
-========================================
-  All services started successfully!
-========================================
+  Backend is ready: http://127.0.0.1:8000
+  Frontend is ready: http://127.0.0.1:3000
 
 Access URLs:
-  Frontend: http://localhost:3000
-  Backend:  http://localhost:8000
-  API Docs: http://localhost:8000/docs
+  Frontend: http://127.0.0.1:3000
+  Backend:  http://127.0.0.1:8000
+  API Docs: http://127.0.0.1:8000/docs
 
-Press Ctrl+C to stop all services
+Services are running in the background.
 ```
 
 ## Example 3: Frontend Only

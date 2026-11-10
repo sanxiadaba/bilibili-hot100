@@ -24,7 +24,7 @@
             <div class="detail-rank">{{ index + 1 }}</div>
             <div class="detail-cover">
               <img
-                :src="getImageUrl(video.pic || 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg')"
+                :src="getImageUrl(video.pic || FALLBACK_COVER)"
                 class="detail-img"
                 loading="lazy"
                 @error="useFallbackImage"
@@ -168,7 +168,7 @@
         >
           <div class="top-liked-cover">
             <img
-              :src="getImageUrl(video.pic || 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg')"
+              :src="getImageUrl(video.pic || FALLBACK_COVER)"
               class="top-liked-img"
               loading="lazy"
               @error="useFallbackImage"
@@ -232,6 +232,7 @@ import {
 import { useThemeStore } from '@/stores/theme'
 import { formatNumber } from '@/utils/format'
 import { getImageUrl } from '@/api/backend'
+import { FALLBACK_COVER } from '@/utils/placeholder'
 import type { StatsData, VideoItem } from '@/types'
 
 const StatsCharts = defineAsyncComponent(() => import('./StatsCharts.vue'))
@@ -331,7 +332,7 @@ const openVideo = (bvid: string) => {
 
 const useFallbackImage = (event: Event) => {
   const image = event.currentTarget as HTMLImageElement
-  image.src = 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg'
+  image.src = FALLBACK_COVER
 }
 </script>
 
@@ -537,89 +538,6 @@ const useFallbackImage = (event: Event) => {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
-.top-item {
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border-radius: 8px;
-  margin: 0 8px;
-}
-
-.top-item:hover {
-  background: rgba(251, 114, 153, 0.05);
-  transform: translateX(8px);
-}
-
-.top-thing {
-  transition: all 0.3s ease;
-}
-
-.rank-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 1rem;
-  background: #e0e0e0;
-  color: #666;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s ease;
-}
-
-.top-item:hover .rank-avatar {
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
-.rank-1 {
-  background: linear-gradient(135deg, #ffd700, #ffaa00);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.4);
-}
-
-.rank-2 {
-  background: linear-gradient(135deg, #c0c0c0, #a0a0a0);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(192, 192, 192, 0.4);
-}
-
-.rank-3 {
-  background: linear-gradient(135deg, #cd7f32, #b87333);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(205, 127, 50, 0.4);
-}
-
-.video-title {
-  font-size: 1rem;
-  line-height: 1.4;
-  transition: color 0.3s ease;
-}
-
-.top-item:hover .video-title {
-  color: #fb7299;
-}
-
-.like-tag {
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
-.top-item:hover .like-tag {
-  transform: scale(1.05);
-  box-shadow: 0 2px 8px rgba(255, 69, 0, 0.3);
-}
-
-.owner-avatar {
-  transition: all 0.3s ease;
-}
-
-.top-item:hover .owner-avatar {
-  transform: scale(1.1);
-  border: 2px solid #fb7299;
-}
-
 .top-liked-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -820,18 +738,6 @@ const useFallbackImage = (event: Event) => {
   background: rgba(255, 142, 180, 0.2);
 }
 
-.stats-view.dark .top-item:hover {
-  background: rgba(255, 142, 180, 0.1);
-}
-
-.stats-view.dark .video-title {
-  color: #e8e8e8;
-}
-
-.stats-view.dark .top-item:hover .video-title {
-  color: #ff8eb4;
-}
-
 @media (max-width: 768px) {
   .overview-item {
     flex-direction: column;
@@ -845,10 +751,6 @@ const useFallbackImage = (event: Event) => {
   
   .sub-stat {
     padding: 16px;
-  }
-  
-  .top-item:hover {
-    transform: none;
   }
 }
 

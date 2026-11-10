@@ -1,48 +1,6 @@
 <template>
   <div class="stats-charts" :class="{ dark: themeStore.isDark }">
-    <n-grid :cols="4" :x-gap="16" :y-gap="16" responsive="screen">
-      <!-- 总播放量 -->
-      <n-gi>
-        <n-card class="stat-card">
-          <div class="stat-value" :style="{ color: '#fb7299' }">
-            {{ formatNumber(stats.totalViews) }}
-          </div>
-          <div class="stat-label">总播放量</div>
-        </n-card>
-      </n-gi>
-
-      <!-- 总点赞 -->
-      <n-gi>
-        <n-card class="stat-card">
-          <div class="stat-value" :style="{ color: '#ff8eb4' }">
-            {{ formatNumber(stats.totalLikes) }}
-          </div>
-          <div class="stat-label">总点赞</div>
-        </n-card>
-      </n-gi>
-
-      <!-- 总投币 -->
-      <n-gi>
-        <n-card class="stat-card">
-          <div class="stat-value" :style="{ color: '#ffd700' }">
-            {{ formatNumber(stats.totalCoins) }}
-          </div>
-          <div class="stat-label">总投币</div>
-        </n-card>
-      </n-gi>
-
-      <!-- 总收藏 -->
-      <n-gi>
-        <n-card class="stat-card">
-          <div class="stat-value" :style="{ color: '#3a7bd5' }">
-            {{ formatNumber(stats.totalFavorites) }}
-          </div>
-          <div class="stat-label">总收藏</div>
-        </n-card>
-      </n-gi>
-    </n-grid>
-
-    <n-grid :cols="2" :x-gap="16" :y-gap="16" style="margin-top: 16px;" responsive="screen">
+    <n-grid :cols="2" :x-gap="16" :y-gap="16" responsive="screen">
       <!-- 分类分布饼图 -->
       <n-gi>
         <n-card title="视频分类分布" class="chart-card">
@@ -292,21 +250,6 @@ watch(() => themeStore.isDark, () => {
   padding: 16px 0;
 }
 
-.stat-card {
-  text-align: center;
-}
-
-.stat-value {
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.stat-label {
-  font-size: 0.9rem;
-  color: #888;
-}
-
 .chart-card {
   min-height: 350px;
 }
@@ -314,9 +257,5 @@ watch(() => themeStore.isDark, () => {
 .chart-container {
   height: 300px;
   width: 100%;
-}
-
-.stats-charts.dark .stat-label {
-  color: #a0a0a0;
 }
 </style>

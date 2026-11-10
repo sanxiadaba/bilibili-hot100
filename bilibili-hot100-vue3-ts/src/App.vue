@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :theme="themeStore.isDark ? darkTheme : null" :theme-overrides="themeStore.theme">
+  <n-config-provider :theme="themeStore.naiveTheme" :theme-overrides="themeStore.theme">
     <n-message-provider>
       <n-dialog-provider>
         <div class="app" :class="{ dark: themeStore.isDark }">
@@ -56,8 +56,7 @@ import {
   NDialogProvider,
   NSpin,
   NBackTop,
-  NAlert,
-  darkTheme
+  NAlert
 } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 import { useVideoStore } from '@/stores/videos'

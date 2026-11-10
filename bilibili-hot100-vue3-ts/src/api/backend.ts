@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { BackendStatus, Hot100Response, LogEntry, RefreshResponse } from '@/types'
+import { FALLBACK_COVER } from '@/utils/placeholder'
 
 const backend = axios.create({
   baseURL: '/api',
@@ -9,19 +10,19 @@ const backend = axios.create({
   }
 })
 
-export const fetchHot100 = async (forceRefresh = false): Promise<{
+export const fetchHot100 = async (): Promise<{
   videos: Hot100Response['data']
   fromCache: boolean
   updateTime: string
+  isPartial: boolean
 }> => {
-  const response = await backend.get<Hot100Response>('/hot100', {
-    params: { force_refresh: forceRefresh }
-  })
+  const response = await backend.get<Hot100Response>('/hot100')
   if (response.data.code === 0) {
     return {
       videos: response.data.data,
       fromCache: response.data.from_cache,
-      updateTime: response.data.update_time
+      updateTime: response.data.update_time,
+      isPartial: response.data.is_partial ?? false
     }
   }
   throw new Error(response.data.message)
@@ -39,15 +40,12 @@ export const getStatus = async (): Promise<BackendStatus> => {
 
 export const getImageUrl = (url: string): string => {
   if (!url) return ''
-  if (url.startsWith('/api/images/')) {
+  // Cached images are already served from this origin; external URLs are kept
+  // as-is so a missing cache entry degrades to the original CDN image.
+  if (url.startsWith('/api/') || url.startsWith('http://') || url.startsWith('https://')) {
     return url
   }
-  // 对于外部图片 URL，直接返回
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url
-  }
-  // 对于其他情况，返回默认图片
-  return 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg'
+  return FALLBACK_COVER
 }
 
 export const getLogs = async (): Promise<LogEntry[]> => {

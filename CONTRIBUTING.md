@@ -31,7 +31,7 @@ Thank you for your interest in contributing!
 
 ### Code Style
 
-- **Python**: Follow [PEP 8](https://pep8.org/).
+- **Python**: PEP 8, enforced by `ruff check` + `ruff format` (config in the repo-root `pyproject.toml`).
 - **TypeScript/Vue**: Use the existing project conventions. Run `npm run build` in the frontend to verify no type errors before committing.
 - **Commit messages**: Use imperative mood, e.g. "Fix image cache deduplication bug" not "Fixed...".
 
@@ -54,13 +54,23 @@ Visit http://localhost:3000 to verify the frontend is running.
 Before committing:
 
 ```bash
+# Lint (repo root; config in pyproject.toml)
+ruff check .
+ruff format --check .
+
 cd bilibili-hot100-backend
 python -m unittest discover -s tests -v
 cd ../bilibili-hot100-vue3-ts
+npm run typecheck
+npm run test:unit
 npm run build
 npm run test:e2e
 npm audit
 ```
+
+CI (`.github/workflows/ci.yml`) runs the lint, unit/API tests, typecheck, unit
+tests, build and an offline E2E job with a generated fixture snapshot, so a PR
+that breaks any of these will fail before review.
 
 ### Commit Message Format
 

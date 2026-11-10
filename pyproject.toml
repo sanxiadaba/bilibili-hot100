@@ -1,0 +1,17 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "bilibili-hot100-backend/.venv",
+    "bilibili-hot100-vue3-ts/node_modules",
+    "bilibili-hot100-vue3-ts/dist",
+    "data",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
+ignore = ["B008"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["hot100"]

@@ -8,13 +8,22 @@ When user wants to start the bilibili-hot100 project, **IMMEDIATELY** run the la
 
 ```
 IF Windows:
-    RUN: .\start-all.bat --detached
+    RUN: .\start-all.bat --detached --json
     
 IF macOS/Linux:
-    RUN: ./start-all.sh --detached
+    RUN: ./start-all.sh --detached --json
 ```
 
-**IMPORTANT:** Always use `--detached` flag for AI assistants to run services in background.
+**IMPORTANT:** Always use `--detached` so the command returns instead of blocking.
+
+The command returns a single JSON line; parse it instead of scraping text:
+
+```json
+{"ok": true, "backend": {"pid": 19208, "ready": true, "url": "..."},
+ "frontend": {"pid": 11476, "ready": true, "url": "..."}}
+```
+
+Failure returns `{"ok": false, "error": "..."}` with a non-zero exit code.
 
 ## User Intent Patterns
 
@@ -30,45 +39,37 @@ IF macOS/Linux:
 When triggered, execute these steps:
 
 1. **Check OS**
-2. **Run launcher with --detached flag**
-3. **Report progress** - Output each step to user
-4. **Confirm completion** - Services are running in background
+2. **Run launcher with `--detached --json`**
+3. **Read the JSON result** instead of parsing the human-readable text
+4. **Confirm completion** - `"ok": true` means both services are ready
 5. **Provide URLs** - http://127.0.0.1:3000
 
 ## Example Execution Output
 
 ```
-[1/5] Checking backend port 8000...
-  Port 8000 is free
-
-[2/5] Checking frontend port 3000...
-  Port 3000 is free
-
-[3/5] Starting backend service...
-  Creating virtual environment...
-  Installing backend dependencies...
-  Backend started: http://localhost:8000
-  PID saved to: .pids/backend.pid
-
-[4/5] Starting frontend service...
-  Installing frontend dependencies...
-  Frontend started: http://localhost:3000
-  PID saved to: .pids/frontend.pid
-
-[5/5] Finalizing...
-
-========================================
-  All services started successfully!
-========================================
-
-Access URLs:
-  Frontend: http://127.0.0.1:3000
-  Backend:  http://127.0.0.1:8000
-  API Docs: http://127.0.0.1:8000/docs
-
-Services running in background.
-Use stop-all.bat to stop services.
+Starting backend (FastAPI on :8000)...
+  Backend is ready: http://127.0.0.1:8000
+Starting frontend (Vite on :3000)...
+  Frontend is ready: http://127.0.0.1:3000
+Bilibili Hot100 services started successfully.
+{"backend": {"pid": 19208, "ready": true, "url": "http://127.0.0.1:8000"},
+ "data_dir": "...\\data", "detached": true,
+ "frontend": {"pid": 11476, "ready": true, "url": "http://127.0.0.1:3000"},
+ "mode": "all", "ok": true}
 ```
+
+The command returns as soon as the services are ready; it never blocks.
+A failure exits non-zero and prints `{"ok": false, "error": "..."}`.
+
+## Status / Troubleshooting
+
+```
+RUN: python launcher.py --status
+RUN: python launcher.py --stop      # same as stop-all
+```
+
+`--status` reports `pid`, `alive`, `ready`, `owned`, `port_in_use` for each service.
+Logs live in `.pids/backend.err.log` and `.pids/frontend.err.log`.
 
 ## Stop Services
 
@@ -87,6 +88,8 @@ RUN: ./stop-all.sh
 ## Arguments
 
 - `--detached` - Run services in background (RECOMMENDED for AI)
+- `--json` - Print a machine-readable result (use together with `--detached`)
+- `--status` - Report service state as JSON and exit
 - `--frontend-only` - Start only frontend
 - `--backend-only` - Start only backend
 - `--data-dir <path>` - Custom data directory
@@ -99,6 +102,14 @@ RUN: ./stop-all.sh
 - Run without --detached flag (blocks the AI)
 
 ## Service Status
+
+Check state without starting anything:
+
+```
+RUN: python launcher.py --status
+```
+
+`--status` always prints JSON, e.g. `{"ok": true, "backend": {"pid": 19208, "alive": true, "ready": true, "owned": true, ...}}`.
 
 After running, services are available at:
 - **Frontend:** http://127.0.0.1:3000

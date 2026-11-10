@@ -14,18 +14,27 @@ npm ci
 npm run dev
 ```
 
-前端地址为 http://127.0.0.1:3000，`/api` 由 Vite 代理到后端。
+前端地址为 http://127.0.0.1:3000（`strictPort`，端口被占用会直接报错而不是悄悄换端口），`/api` 与 WebSocket 由 Vite 代理到后端。
 
 ## 检查命令
 
 ```bash
 npm run typecheck
+npm run test:unit   # vitest：工具函数 + Pinia store
 npm run build
-npm run test:e2e
+npm run test:e2e    # Playwright，需要前后端已启动
 npm audit
 ```
 
 E2E 需要前后端服务已经启动；首次运行前执行 `npx playwright install chromium`。
+
+离线跑 E2E（不访问 B 站，CI 采用这条路径）：
+
+```bash
+cd ../bilibili-hot100-backend
+python tests/make_fixture.py ../data/snapshot.json   # 生成 100 条假数据快照
+BILIBILI_PRELOAD=0 python -m uvicorn main:app --port 8000
+```
 
 ## 结构
 
@@ -35,6 +44,6 @@ src/
 ├── components/   # 页面组件
 ├── stores/       # Pinia 状态与统计
 ├── types/        # TypeScript 数据契约
-└── utils/        # 格式化工具
+└── utils/        # 格式化工具与图片兜底常量
 tests/            # Playwright E2E
 ```

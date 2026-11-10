@@ -100,13 +100,22 @@ const connectionStatus = computed(() => {
   }
 })
 
+const resolveWsUrl = (): string => {
+  const configured = import.meta.env.VITE_WS_URL
+  if (configured) return configured
+  // Same-origin by default, so the Vite dev proxy (ws: true) forwards it and
+  // the backend origin allow-list keeps matching.
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/api/logs/ws`
+}
+
 const connectWebSocket = () => {
   if (ws?.readyState === WebSocket.OPEN) return
 
   connectionState.value = 'connecting'
   isConnecting.value = true
 
-  const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/api/logs/ws'
+  const wsUrl = resolveWsUrl()
 
   try {
     ws = new WebSocket(wsUrl)

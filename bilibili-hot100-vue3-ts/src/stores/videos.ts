@@ -13,6 +13,7 @@ export const useVideoStore = defineStore('videos', () => {
   const sortBy = ref<SortType>('rank')
   const lastUpdateTime = ref<string | null>(null)
   const fromCache = ref(false)
+  const isPartial = ref(false)
 
   const categories = computed(() => {
     const cats = new Map<string, number>()
@@ -111,14 +112,15 @@ export const useVideoStore = defineStore('videos', () => {
     }
   })
 
-  const loadVideos = async (forceRefresh = false): Promise<void> => {
+  const loadVideos = async (): Promise<void> => {
     loading.value = true
     error.value = null
     try {
-      const result = await fetchHot100(forceRefresh)
+      const result = await fetchHot100()
       videos.value = result.videos
       lastUpdateTime.value = result.updateTime
       fromCache.value = result.fromCache
+      isPartial.value = result.isPartial
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载失败'
     } finally {
@@ -150,6 +152,7 @@ export const useVideoStore = defineStore('videos', () => {
       videos.value = result.videos
       lastUpdateTime.value = result.updateTime
       fromCache.value = result.fromCache
+      isPartial.value = result.isPartial
       return true
     } catch (err) {
       error.value = err instanceof Error ? err.message : '刷新失败'
@@ -185,6 +188,7 @@ export const useVideoStore = defineStore('videos', () => {
     sortBy,
     lastUpdateTime,
     fromCache,
+    isPartial,
     categories,
     filteredVideos,
     stats,

@@ -28,10 +28,16 @@ bilibili-hot100-vue3-ts/dist/
 bilibili-hot100-vue3-ts/node_modules/
 bilibili-hot100-vue3-ts/test-results/
 bilibili-hot100-vue3-ts/playwright-report/
+bilibili-hot100-vue3-ts/coverage/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Python tooling caches / test fixtures
+.ruff_cache/
+.pytest_cache/
+bilibili-hot100-backend/tests/fixtures/
 
 # Build artifacts
 *.exe

@@ -1,0 +1,16 @@
+# Normalize line endings so the cross-platform scripts work everywhere.
+* text=auto eol=lf
+
+# Windows command scripts must keep CRLF or cmd.exe misparses blocks.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# POSIX scripts must stay LF so `#!/usr/bin/env bash` resolves.
+*.sh text eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.svg text

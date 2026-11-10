@@ -36,6 +36,8 @@ export interface Hot100Response {
   data: VideoItem[]
   update_time: string
   from_cache: boolean
+  is_partial?: boolean
+  source?: string
 }
 
 export interface CategoryStat {
@@ -74,6 +76,9 @@ export interface BackendStatus {
   is_updating: boolean
   refresh_id: string | null
   last_error: string | null
+  is_partial?: boolean
+  source?: string | null
+  snapshot_time?: string | null
   cached_images: number
   cached_urls: number
 }

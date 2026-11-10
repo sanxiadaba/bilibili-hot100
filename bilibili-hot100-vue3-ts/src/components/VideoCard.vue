@@ -67,6 +67,7 @@ import { NCard, NTag, NEllipsis, NIcon } from 'naive-ui'
 import { PlayCircleOutline, ChatbubbleOutline, ThumbsUpOutline } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { getImageUrl } from '@/api/backend'
+import { FALLBACK_AVATAR, FALLBACK_COVER } from '@/utils/placeholder'
 import { formatNumber, formatDuration, getRankClass } from '@/utils/format'
 import type { VideoItem } from '@/types'
 
@@ -79,13 +80,13 @@ const imageError = ref(false)
 const avatarError = ref(false)
 
 const thumbnailUrl = computed(() => {
-  if (imageError.value) return ''
-  return getImageUrl(props.video.pic || 'https://i0.hdslb.com/bfs/archive/7e6c4623b846e5a01b326f608c2c98e14c5b3c3c.jpg')
+  if (imageError.value) return FALLBACK_COVER
+  return getImageUrl(props.video.pic || FALLBACK_COVER)
 })
 
 const ownerFace = computed(() => {
-  if (avatarError.value) return 'https://i0.hdslb.com/bfs/face/member/noface.jpg'
-  return getImageUrl(props.video.owner?.face || '')
+  if (avatarError.value) return FALLBACK_AVATAR
+  return getImageUrl(props.video.owner?.face || FALLBACK_AVATAR)
 })
 
 const rankClass = computed(() => getRankClass(props.video.rank))

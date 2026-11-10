@@ -1,9 +1,9 @@
 {
   "name": "bilibili-hot100-launcher",
-  "version": "2.0.0",
-  "description": "Safe cross-platform launcher for the Vue and FastAPI services with verified PID management.",
+  "version": "2.1.0",
+  "description": "Safe cross-platform launcher (launcher.py) for the Vue and FastAPI services with verified PID management.",
   "author": "AI Assistant",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "platforms": ["windows", "macos", "linux"],
   "languages": ["zh", "en"],
   "triggers": {
@@ -46,9 +46,9 @@
     }
   },
   "requirements": {
-    "windows": ["PowerShell 5.1+", "Python 3.9+", "Node.js 22.12+"],
-    "macos": ["Bash", "Python 3.9+", "Node.js 22.12+"],
-    "linux": ["Bash", "Python 3.9+", "Node.js 22.12+"]
+    "windows": ["PowerShell 5.1+ or any shell", "Python 3.11+", "Node.js 22.12+"],
+    "macos": ["Bash", "Python 3.11+", "Node.js 22.12+"],
+    "linux": ["Bash", "Python 3.11+", "Node.js 22.12+"]
   },
   "project_structure": {
     "frontend": "bilibili-hot100-vue3-ts",

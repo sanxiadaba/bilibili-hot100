@@ -107,6 +107,14 @@
         >
           缓存
         </n-tag>
+        <n-tag
+          v-if="videoStore.isPartial"
+          size="tiny"
+          type="error"
+          style="margin-left: 8px"
+        >
+          数据不完整
+        </n-tag>
       </n-text>
     </div>
   </header>
@@ -136,7 +144,7 @@ import ThemeToggle from './ThemeToggle.vue'
 import CategoryFilter from './CategoryFilter.vue'
 import type { SortType } from '@/types'
 
-const props = defineProps<{
+defineProps<{
   showStatsView: boolean
 }>()
 

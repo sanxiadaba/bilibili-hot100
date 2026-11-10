@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { darkTheme, type GlobalTheme } from 'naive-ui'
 import type { GlobalThemeOverrides } from 'naive-ui'
 
@@ -73,10 +73,6 @@ export const useThemeStore = defineStore('theme', () => {
   }
 
   const naiveTheme = computed<GlobalTheme | null>(() => isDark.value ? darkTheme : null)
-
-  watch(isDark, (val) => {
-    document.documentElement.classList.toggle('dark', val)
-  }, { immediate: true })
 
   return {
     isDark,

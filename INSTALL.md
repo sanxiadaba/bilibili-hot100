@@ -77,30 +77,34 @@ def handle_bilibili_launcher(user_input, os_type):
         return skill["services"]
 ```
 
-## For Trae IDE
+## For Trae / other IDE skill loaders
 
-Already installed! The skill is at:
-```
-.trae/skills/bilibili-launcher/SKILL.md
-```
+This repository ships the skill definition itself; nothing is pre-installed outside it.
+Point your skill loader at `skill.json` and `AI_INSTRUCTIONS.md` in the repository root, and
+let `actions.<os>.command` invoke the wrapper scripts.
 
 ## Verification
 
 Test the installation:
 
 1. Say: "启动bilibili项目"
-2. AI should immediately run the launcher
-3. Browser should open to http://127.0.0.1:3000
+2. AI should run `start-all.bat --detached --json` (or the `.sh` equivalent)
+3. The command prints one JSON line with `"ok": true` and both service URLs
+4. Open http://127.0.0.1:3000
 
 ## Troubleshooting
 
 **Script not found:**
-- Ensure scripts are in project root or `scripts/` folder
+- The wrappers live in the repository root (`start-all.*`, `stop-all.*`); `scripts/` only mirrors them
 - Check file permissions (chmod +x on Unix)
 
+**Python not found:**
+- The wrappers need a `python`/`python3` (3.11+) on PATH; the backend venv is created by `launcher.py`
+
 **Ports blocked:**
-- Run `Get-NetTCPConnection -State Listen -LocalPort 3000,8000` to identify the owner
+- Run `python launcher.py --status` to see what the launcher thinks is running, or
+  `Get-NetTCPConnection -State Listen -LocalPort 3000,8000` to find the owner
 - Stop the conflicting application; the launcher intentionally does not kill unrelated processes
 
 **Dependencies missing:**
-- Install Python 3.9+ and Node.js 22.12+
+- Install Python 3.11+ and Node.js 22.12+
