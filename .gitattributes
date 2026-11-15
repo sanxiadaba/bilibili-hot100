@@ -1,10 +1,10 @@
-* text=auto eol=lf
+* text=auto
 
-# cmd.exe 需要 CRLF
+# cmd.exe ?? CRLF
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
-# 二进制资源
+# ?????
 *.png binary
 *.jpg binary
 *.webp binary
