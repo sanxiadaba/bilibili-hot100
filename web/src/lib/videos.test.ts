@@ -53,6 +53,12 @@ describe('selectVideos', () => {
   it('按播放量倒序', () => {
     expect(selectVideos(videos, 'all', '', 'view').map(video => video.rank)).toEqual([3, 2, 1])
   })
+
+  it('排序不修改原数组', () => {
+    const sorted = selectVideos(videos, 'all', '', 'view')
+    expect(sorted.map(video => video.rank)).toEqual([3, 2, 1])
+    expect(videos.map(video => video.rank)).toEqual([1, 2, 3])
+  })
 })
 
 describe('summarize', () => {
