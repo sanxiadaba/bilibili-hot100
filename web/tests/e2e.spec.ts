@@ -38,6 +38,8 @@ test('统计页的点赞 TOP 10 来自完整数据集', async ({ page }) => {
       .map(video => video.title)
   })
 
+  // 先筛掉一部分列表，统计页仍应按全量数据算 TOP 10。
+  await page.getByLabel('搜索视频或UP主').fill('离线测试视频 001')
   await page.getByLabel('打开数据分析').click()
   await expect(page.locator('.stats-view')).toBeVisible()
   await page.getByRole('tab', { name: '点赞' }).click()
@@ -52,8 +54,10 @@ test('视频行是可直接打开的链接，导出有下载地址', async ({ pa
   const first = page.locator(rows).first()
   await expect(first).toHaveAttribute('href', /bilibili\.com\/video\/BV/)
   await expect(first).toHaveAttribute('target', '_blank')
+  await expect(first).toHaveAttribute('rel', 'noopener noreferrer')
 
   await expect(page.getByLabel('导出当前数据')).toHaveAttribute('href', '/api/export')
+  await expect(page.getByLabel('导出当前数据')).toHaveAttribute('download', '')
   await expect(page.getByLabel('刷新数据')).toBeVisible()
   await expect(page.getByLabel('查看日志')).toBeVisible()
 })
@@ -62,6 +66,8 @@ test('日志面板能连上 WebSocket', async ({ page }) => {
   await page.getByLabel('查看日志').click()
   await expect(page.getByRole('dialog', { name: '后台日志' })).toBeVisible()
   await expect(page.getByText('已连接')).toBeVisible({ timeout: 10_000 })
+  // 服务端启动日志会随历史回放；只验连接文案的话 accept 后丢帧也能过。
+  await expect(page.locator('.log').first()).toBeVisible()
   await page.getByLabel('关闭日志').click()
   await expect(page.getByRole('dialog', { name: '后台日志' })).toBeHidden()
 })
@@ -73,9 +79,10 @@ test('390px 窄屏没有横向溢出', async ({ page }) => {
 
   const metrics = await page.evaluate(() => ({
     viewport: window.innerWidth,
-    document: document.documentElement.scrollWidth,
-    firstRowTop: document.querySelector('.video-list .row')?.getBoundingClientRect().top ?? Infinity
+    document: document.documentElement.scrollWidth
   }))
   expect(metrics.document).toBeLessThanOrEqual(metrics.viewport)
-  expect(metrics.firstRowTop).toBeLessThan(844)
+  await expect(page.locator(`${rows} .cover`).first()).toBeInViewport()
+  await expect(page.locator(`${rows} .title`).first()).toBeInViewport()
+  await expect(page.locator(`${rows} .duration`).first()).toBeVisible()
 })
