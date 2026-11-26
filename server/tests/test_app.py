@@ -285,7 +285,26 @@ class ApiSecurityTests(unittest.TestCase):
         self.assertIsNone(api.require_same_origin(make_request("http://127.0.0.1:8000")))
         # Vite 开发服务器（:3000）通过代理访问时 Host 会变成 :8000，来源仍应放行。
         self.assertIsNone(api.require_same_origin(make_request("http://127.0.0.1:3000")))
+        # localhost 与 127.0.0.1 是同一个回环来源，换写法不应把用户挡在 403。
+        self.assertIsNone(api.require_same_origin(make_request("http://localhost:3000")))
         self.assertIsNone(api.require_same_origin(make_request(None)))
+
+    def test_rebinding_host_is_not_trusted(self):
+        """外部域名解析到 127.0.0.1 时，Origin 与 Host 同名也不能算同源。"""
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/refresh",
+                "headers": [
+                    (b"host", b"evil.example:8000"),
+                    (b"origin", b"http://evil.example:8000"),
+                ],
+            }
+        )
+        with self.assertRaises(HTTPException) as raised:
+            api.require_same_origin(request)
+        self.assertEqual(raised.exception.status_code, 403)
 
 
 class ApiTests(unittest.TestCase):
@@ -305,6 +324,14 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["total"], 0)
         self.assertTrue(body["stale"])
         self.assertIn("data_dir", body)
+
+    def test_non_loopback_host_is_rejected(self):
+        response = self.client.get("/api/status", headers={"Host": "evil.example"})
+        self.assertEqual(response.status_code, 400)
+
+    def test_localhost_host_is_allowed(self):
+        client = TestClient(api.app, base_url="http://localhost:8000")
+        self.assertEqual(client.get("/api/status").status_code, 200)
 
     def test_hot100_is_503_before_the_first_crawl(self):
         response = self.client.get("/api/hot100")

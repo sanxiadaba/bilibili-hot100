@@ -10,7 +10,7 @@ from datetime import datetime
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config, images, store
@@ -25,16 +25,45 @@ MEDIA_TYPES = {
     "gif": "image/gif",
 }
 IMAGE_NAME = re.compile(r"^[0-9a-f]{32}\.(?:jpg|jpeg|png|webp|gif)$")
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def _hostname(headers) -> str | None:
+    """取 Host 的 hostname；缺 Host 返回 None，非法端口/格式抛 ValueError。"""
+    raw = headers.get("host", "")
+    if not raw:
+        return None
+    parsed = urlsplit(f"//{raw}")
+    _ = parsed.port  # 非法端口在这里抛 ValueError
+    return parsed.hostname
+
+
+def _canonical_host(host: str | None) -> str | None:
+    return "loopback" if host in LOOPBACK_HOSTS else host
 
 
 def _same_origin(headers) -> bool:
-    """只允许本机页面触发写操作；忽略端口，方便 Vite 开发服务器代理。"""
+    """只允许本机页面触发写操作；127.0.0.1/localhost/[::1] 视为同一个本机来源。
+
+    忽略端口是为了方便 Vite 开发服务器代理，但 Host 必须是回环名，否则
+    外部域名可以靠 DNS 重绑定拿到同名 Origin/Host 混进来。
+    """
+    try:
+        request_host = _hostname(headers)
+    except ValueError:
+        return False
+    if request_host is not None and request_host not in LOOPBACK_HOSTS:
+        return False
     origin = headers.get("origin")
     if not origin:
         return True
-    host = headers.get("host", "")
-    request_host = urlsplit(f"//{host}").hostname
-    return urlsplit(origin).hostname == request_host
+    try:
+        origin_host = urlsplit(origin).hostname
+    except ValueError:
+        return False
+    if origin_host not in LOOPBACK_HOSTS:
+        return False
+    return _canonical_host(origin_host) == _canonical_host(request_host)
 
 
 def require_same_origin(request: Request) -> None:
@@ -58,6 +87,18 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="B站热门视频", version="3.0.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def require_loopback_host(request: Request, call_next):
+    """只接受回环 Host；挡住 DNS 重绑定在浏览器里把外部域名指到 127.0.0.1。"""
+    try:
+        host = _hostname(request.headers)
+    except ValueError:
+        return PlainTextResponse("Forbidden", status_code=400)
+    if host is not None and host not in LOOPBACK_HOSTS:
+        return PlainTextResponse("Forbidden", status_code=400)
+    return await call_next(request)
 
 
 @app.middleware("http")
