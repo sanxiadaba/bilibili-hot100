@@ -52,6 +52,16 @@ def run(command: list[str], cwd: Path | None = None) -> None:
     subprocess.run(command, cwd=str(cwd) if cwd else None, check=True)
 
 
+def in_venv() -> bool:
+    """判断当前解释器是不是仓库里的 .venv。
+
+    不能比较解析后的可执行文件路径：POSIX 的 .venv/bin/python 默认是指向
+    base 解释器的 symlink，两边 resolve() 会得到同一个二进制，于是永远
+    不切换进 venv。
+    """
+    return Path(sys.prefix).resolve() == VENV.resolve()
+
+
 def ensure_venv() -> int:
     if not venv_python().exists():
         if sys.version_info < MIN_PYTHON:
@@ -69,7 +79,7 @@ def ensure_venv() -> int:
     # 用虚拟环境里的解释器重新执行自己，后续操作都在 .venv 里。
     # Windows 的 os.execv 是“启动新进程再退出当前进程”，会让命令行提前返回，
     # 所以这里统一用子进程等待，Ctrl+C 仍然作用于整个控制台。
-    if Path(sys.executable).resolve() != venv_python().resolve():
+    if not in_venv():
         result = subprocess.run(
             [str(venv_python()), str(Path(__file__).resolve()), *sys.argv[1:]], check=False
         )

@@ -23,21 +23,28 @@ class PortNumberTests(unittest.TestCase):
                 run.port_number(value)
 
 
+class InVenvTests(unittest.TestCase):
+    def test_uses_sys_prefix_not_resolved_executable(self):
+        with patch.object(run, "VENV", Path(sys.prefix)):
+            self.assertTrue(run.in_venv())
+        with patch.object(run, "VENV", Path(sys.prefix) / "other-venv"):
+            self.assertFalse(run.in_venv())
+
+
 class ReexecTests(unittest.TestCase):
     def test_reexec_propagates_child_exit_code(self):
-        """用其他解释器重执行时，父进程必须带着子进程退出码结束，不能继续 main。"""
+        """不在 .venv 里时父进程必须带着子进程退出码结束，不能继续 main。"""
         with (
-            patch.object(
-                run, "venv_python", return_value=Path(sys.executable).with_name("other-python")
-            ),
-            patch.object(run.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)),
+            patch.object(run, "in_venv", return_value=False),
+            patch.object(run, "venv_python", return_value=Path(sys.executable)),
+            patch.object(run.subprocess, "run", return_value=subprocess.CompletedProcess([], 7)),
             patch.object(run, "step"),
             patch.object(run, "info"),
             self.assertRaises(SystemExit) as raised,
         ):
             run.ensure_venv()
 
-        self.assertEqual(raised.exception.code, 0)
+        self.assertEqual(raised.exception.code, 7)
 
 
 class RequirementsMarkerTests(unittest.TestCase):
@@ -60,6 +67,7 @@ class RequirementsMarkerTests(unittest.TestCase):
             with (
                 patch.object(run, "VENV", venv),
                 patch.object(run, "REQUIREMENTS", requirements),
+                patch.object(run, "in_venv", return_value=True),
                 patch.object(run, "venv_python", return_value=Path(sys.executable)),
                 patch.object(run.subprocess, "run", side_effect=fake_run),
                 patch.object(run, "step"),
