@@ -28,6 +28,11 @@ IMAGE_NAME = re.compile(r"^[0-9a-f]{32}\.(?:jpg|jpeg|png|webp|gif)$")
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
+def _normalize_host(host: str | None) -> str | None:
+    # FQDN 写法 localhost. 与 localhost 等价，去掉末尾一个点再比对。
+    return host[:-1] if host and host.endswith(".") else host
+
+
 def _hostname(headers) -> str | None:
     """取 Host 的 hostname；缺 Host 返回 None，非法端口/格式抛 ValueError。"""
     raw = headers.get("host", "")
@@ -35,9 +40,7 @@ def _hostname(headers) -> str | None:
         return None
     parsed = urlsplit(f"//{raw}")
     _ = parsed.port  # 非法端口在这里抛 ValueError
-    host = parsed.hostname
-    # FQDN 写法 localhost. 与 localhost 等价，去掉末尾一个点再比对。
-    return host[:-1] if host and host.endswith(".") else host
+    return _normalize_host(parsed.hostname)
 
 
 def _canonical_host(host: str | None) -> str | None:
@@ -60,7 +63,7 @@ def _same_origin(headers) -> bool:
     if not origin:
         return True
     try:
-        origin_host = urlsplit(origin).hostname
+        origin_host = _normalize_host(urlsplit(origin).hostname)
     except ValueError:
         return False
     if origin_host not in LOOPBACK_HOSTS:

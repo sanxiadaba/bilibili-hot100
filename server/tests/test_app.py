@@ -411,6 +411,9 @@ class ApiSecurityTests(unittest.TestCase):
             api.require_same_origin(request)
         self.assertEqual(raised.exception.status_code, 403)
 
+    def test_fqdn_trailing_dot_in_origin_is_loopback(self):
+        self.assertIsNone(api.require_same_origin(make_request("http://localhost.:3000")))
+
 
 class ApiTests(unittest.TestCase):
     def setUp(self):
