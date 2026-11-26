@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(os.getenv("BILIBILI_DATA_DIR", str(ROOT / "data"))).resolve()
+DATA_DIR = Path(os.getenv("BILIBILI_DATA_DIR") or str(ROOT / "data")).expanduser().resolve()
 SNAPSHOT_FILE = DATA_DIR / "snapshot.json"
 IMAGE_DIR = DATA_DIR / "images"
 WEB_DIST = ROOT / "web" / "dist"
