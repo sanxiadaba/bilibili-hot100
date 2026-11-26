@@ -23,6 +23,8 @@ python run.py --rebuild            # 强制重建前端
 python run.py --data-dir D:\bili   # 换数据目录
 ```
 
+换端口只影响后端和浏览器地址：`npm run dev` 的代理固定指向 8000，E2E 需要 `E2E_BASE_URL` 指到新端口。
+
 ## 数据
 
 - `data/snapshot.json` 是最后一次成功抓取。启动时先加载它，页面立刻可用，再决定是否刷新。
@@ -32,6 +34,12 @@ python run.py --data-dir D:\bili   # 换数据目录
 - 只监听 `127.0.0.1`，不对外网开放。
 
 ## 开发
+
+先装开发依赖（`run.py` 只装运行依赖，测试需要 `httpx2` 和 `ruff`）：
+
+```bash
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+```
 
 后端：
 
@@ -52,16 +60,27 @@ npx playwright install chromium   # 首次跑 E2E 前装一次浏览器
 npm run e2e
 ```
 
-E2E 用离线夹具，不访问 B站：
+E2E 用离线夹具，不访问 B站。先在一个终端起服务：
 
 ```powershell
 python server/tests/make_fixture.py data-e2e/snapshot.json
 $env:BILIBILI_DATA_DIR="data-e2e"; $env:BILIBILI_PRELOAD="0"
 python run.py --no-browser
-cd web; npm run e2e
 ```
 
-WSL / Linux 把 `.venv\Scripts\python` 换成 `.venv/bin/python`，其余相同。
+再开一个终端跑测试：
+
+```powershell
+cd web
+npm run e2e
+```
+
+换过端口时，先 `$env:E2E_BASE_URL="http://127.0.0.1:8010"` 再跑 `npm run e2e`。WSL / Linux 把 `.venv\Scripts\python` 换成 `.venv/bin/python`，把 `python` 换成 `python3`（若没有 `python` 别名），环境变量写成：
+
+```bash
+export BILIBILI_DATA_DIR=data-e2e BILIBILI_PRELOAD=0
+python3 run.py --no-browser
+```
 
 ## 结构
 
