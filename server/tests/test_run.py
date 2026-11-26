@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,16 @@ from unittest.mock import patch
 import run
 
 
+class PortNumberTests(unittest.TestCase):
+    def test_accepts_valid_port(self):
+        self.assertEqual(run.port_number("8010"), 8010)
+
+    def test_rejects_out_of_range_port(self):
+        for value in ("0", "-1", "65536", "70000"):
+            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+                run.port_number(value)
+
+
 class ReexecTests(unittest.TestCase):
     def test_reexec_propagates_child_exit_code(self):
         """用其他解释器重执行时，父进程必须带着子进程退出码结束，不能继续 main。"""
@@ -20,6 +31,8 @@ class ReexecTests(unittest.TestCase):
                 run, "venv_python", return_value=Path(sys.executable).with_name("other-python")
             ),
             patch.object(run.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)),
+            patch.object(run, "step"),
+            patch.object(run, "info"),
             self.assertRaises(SystemExit) as raised,
         ):
             run.ensure_venv()
@@ -49,6 +62,8 @@ class RequirementsMarkerTests(unittest.TestCase):
                 patch.object(run, "REQUIREMENTS", requirements),
                 patch.object(run, "venv_python", return_value=Path(sys.executable)),
                 patch.object(run.subprocess, "run", side_effect=fake_run),
+                patch.object(run, "step"),
+                patch.object(run, "info"),
             ):
                 run.ensure_venv()
 

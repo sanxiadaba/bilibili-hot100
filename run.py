@@ -222,9 +222,16 @@ def port_free(port: int) -> bool:
         probe.close()
 
 
+def port_number(value: str) -> int:
+    port = int(value)
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("端口必须在 1-65535 之间")
+    return port
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="启动 B站热门视频看板")
-    parser.add_argument("--port", type=int, default=8000, help="监听端口（默认 8000）")
+    parser.add_argument("--port", type=port_number, default=8000, help="监听端口（默认 8000）")
     parser.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     parser.add_argument("--rebuild", action="store_true", help="强制重新构建前端")
     parser.add_argument("--data-dir", help="数据目录（默认 data/）")
@@ -250,7 +257,9 @@ def main() -> int:
     print("  按 Ctrl+C 停止\n", flush=True)
 
     if not args.no_browser:
-        threading.Timer(1.2, webbrowser.open, args=[url]).start()
+        browser_timer = threading.Timer(1.2, webbrowser.open, args=[url])
+        browser_timer.daemon = True
+        browser_timer.start()
 
     import uvicorn
 
