@@ -194,11 +194,19 @@ async def logs_socket(websocket: WebSocket) -> None:
     await log_manager.connect(websocket)
     try:
         while True:
-            message = json.loads(await websocket.receive_text())
+            raw = await websocket.receive_text()
+            try:
+                message = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(message, dict):
+                continue
             if message.get("action") == "clear":
                 log_manager.clear()
-                await websocket.send_json({"type": "cleared"})
-    except (WebSocketDisconnect, json.JSONDecodeError):
+                async with log_manager.send_lock:
+                    await websocket.send_json({"type": "cleared"})
+    except (WebSocketDisconnect, RuntimeError, KeyError):
+        # 二进制帧在 receive_text 里是 KeyError('text')，畸形帧不应打崩整个 handler。
         pass
     finally:
         log_manager.disconnect(websocket)

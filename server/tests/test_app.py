@@ -383,5 +383,26 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/logs").json()["data"], [])
 
 
+class LogSocketTests(unittest.TestCase):
+    def test_non_object_frame_does_not_break_the_socket(self):
+        from server.logs import log_info
+
+        with (
+            patch.object(config, "PRELOAD", False),
+            TestClient(api.app, base_url="http://127.0.0.1:8000") as client,
+            client.websocket_connect(
+                "/api/logs/ws", headers={"host": "127.0.0.1:8000"}
+            ) as websocket,
+        ):
+            websocket.send_text("[1,2]")
+            log_info("after malformed frame")
+            for _ in range(20):
+                payload = websocket.receive_json()
+                if payload.get("data", {}).get("message") == "after malformed frame":
+                    break
+            else:
+                self.fail("没有收到畸形帧之后的日志")
+
+
 if __name__ == "__main__":
     unittest.main()

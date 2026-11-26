@@ -48,6 +48,8 @@ function disconnect(): void {
 
 function connect(): void {
   disconnect()
+  // 重连时服务端会重放历史日志；先清空本地，避免整段重复。
+  logs.value = []
   connection.value = 'connecting'
   const current = new WebSocket(logsSocketUrl())
   socket = current

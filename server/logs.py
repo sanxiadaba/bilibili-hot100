@@ -69,15 +69,27 @@ class LogManager:
         await websocket.accept()
         self.clients.add(websocket)
         # 历史日志和后续广播共用一把发送锁，避免同一连接上帧交错。
-        async with self.send_lock:
-            for entry in list(self.logs):
-                await websocket.send_json({"type": "log", "data": entry})
+        try:
+            async with self.send_lock:
+                for entry in list(self.logs):
+                    await websocket.send_json({"type": "log", "data": entry})
+        except Exception:
+            # 回放中途断开时不能把死连接留在广播集合里。
+            self.clients.discard(websocket)
+            raise
 
     def disconnect(self, websocket: WebSocket) -> None:
         self.clients.discard(websocket)
 
     def clear(self) -> None:
         self.logs.clear()
+        if self.queue:
+            # 已经进队列但还没广播的旧帧也必须丢掉，否则面板清空后又冒出来。
+            while True:
+                try:
+                    self.queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
 
 
 log_manager = LogManager()
