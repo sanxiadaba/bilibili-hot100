@@ -80,6 +80,11 @@ class NormalizeTests(unittest.TestCase):
     def test_partial_result_above_threshold_is_accepted(self):
         self.assertEqual(len(crawler.normalize_videos(make_videos(95))), 95)
 
+    def test_more_than_target_is_truncated(self):
+        normalized = crawler.normalize_videos(make_videos(120))
+        self.assertEqual(len(normalized), config.TARGET_VIDEOS)
+        self.assertEqual(normalized[-1]["rank"], config.TARGET_VIDEOS)
+
 
 class FetchRetryTests(unittest.IsolatedAsyncioTestCase):
     async def test_transient_failure_is_retried(self):
@@ -102,6 +107,7 @@ class FetchRetryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_persistent_failure_gives_up(self):
         attempts = []
+        delays = (0, 0)
 
         async def broken(_session, page, _page_size):
             attempts.append(page)
@@ -109,12 +115,27 @@ class FetchRetryTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch.object(crawler, "_fetch_once", broken),
-            patch.object(config, "RETRY_DELAYS", (0, 0)),
+            patch.object(config, "RETRY_DELAYS", delays),
             self.assertRaisesRegex(CrawlError, "第 1 页"),
         ):
             await crawler.fetch_page(None, 1)
 
-        self.assertEqual(len(attempts), len(config.RETRY_DELAYS) + 1)
+        self.assertEqual(len(attempts), len(delays) + 1)
+
+    async def test_page_size_is_read_at_call_time(self):
+        seen = []
+
+        async def fake(_session, _page, page_size):
+            seen.append(page_size)
+            return [make_video(1)]
+
+        with (
+            patch.object(crawler, "_fetch_once", fake),
+            patch.object(config, "PAGE_SIZE", 7),
+        ):
+            await crawler.fetch_page(None, 1)
+
+        self.assertEqual(seen, [7])
 
 
 class RefreshTests(unittest.IsolatedAsyncioTestCase):

@@ -43,9 +43,11 @@ async def _fetch_once(session: aiohttp.ClientSession, page: int, page_size: int)
 
 
 async def fetch_page(
-    session: aiohttp.ClientSession, page: int, page_size: int = config.PAGE_SIZE
+    session: aiohttp.ClientSession, page: int, page_size: int | None = None
 ) -> list[dict]:
     """单页请求，失败按 RETRY_DELAYS 重试。"""
+    if page_size is None:
+        page_size = config.PAGE_SIZE
     last_error: Exception | None = None
     for attempt in range(len(config.RETRY_DELAYS) + 1):
         try:
@@ -93,6 +95,9 @@ def normalize_videos(videos: list[dict]) -> list[dict]:
         log_warning(f"跳过 {skipped} 条字段无效的视频")
     if duplicates:
         log_warning(f"去除 {duplicates} 条重复 BV 号")
+    if len(normalized) > config.TARGET_VIDEOS:
+        log_warning(f"上游返回 {len(normalized)} 条，只保留前 {config.TARGET_VIDEOS} 条")
+        normalized = normalized[: config.TARGET_VIDEOS]
     if len(normalized) < config.MIN_VIDEOS:
         raise CrawlError(
             f"热门数据不完整: 期望至少 {config.MIN_VIDEOS} 条，实际 {len(normalized)} 条"
@@ -105,9 +110,18 @@ async def crawl() -> tuple[list[dict], bool, float]:
     log_info("开始抓取 B站热门视频")
     started = time.monotonic()
     async with aiohttp.ClientSession() as session:
-        pages = await asyncio.gather(
-            *(fetch_page(session, page) for page in range(1, config.PAGE_COUNT + 1))
+        results = await asyncio.gather(
+            *(fetch_page(session, page) for page in range(1, config.PAGE_COUNT + 1)),
+            return_exceptions=True,
         )
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+        errors = [result for result in results if isinstance(result, BaseException)]
+        if errors:
+            # 两页都跑完再报错，避免先失败的一页关掉 session，把另一页的真实原因吞掉。
+            raise CrawlError("；".join(str(error) for error in errors))
+        pages = [result for result in results if isinstance(result, list)]
         videos = normalize_videos([video for page in pages for video in page])
         await images.download_all(session, images.urls_for(videos))
 
