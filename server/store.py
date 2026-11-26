@@ -25,19 +25,31 @@ _task: asyncio.Task[None] | None = None
 _lock = asyncio.Lock()
 
 
-def iso_timestamp(timestamp: float) -> str:
-    """带时区的本地时间，浏览器能直接解析。"""
+def iso_timestamp(timestamp: float | None) -> str:
+    """带时区的本地时间，浏览器能直接解析；坏时间戳返回空串，不伪装成“现在”。"""
+    if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+        return ""
+    if timestamp != timestamp:  # NaN
+        return ""
     try:
         return datetime.fromtimestamp(timestamp).astimezone().isoformat(timespec="seconds")
     except (OSError, OverflowError, ValueError):
-        return datetime.now().astimezone().isoformat(timespec="seconds")
+        return ""
 
 
 def is_stale() -> bool:
     update_time = cache["update_time"]
     if not update_time:
         return True
-    return time.time() - update_time > config.CACHE_TTL_SECONDS
+    try:
+        updated = float(update_time)
+    except (TypeError, ValueError):
+        return True
+    # 未来时间戳（时钟回拨、毫秒级旧快照）不可信，直接判 stale，避免永久不刷新。
+    now = time.time()
+    if updated > now:
+        return True
+    return now - updated > config.CACHE_TTL_SECONDS
 
 
 def publish(videos: list[dict], update_time: float, is_partial: bool, source: str) -> None:
@@ -64,8 +76,12 @@ def reset() -> None:
 
 def _atomic_write(path, data: str) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(data, encoding="utf-8")
-    temporary.replace(path)
+    try:
+        temporary.write_text(data, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
 
 
 async def save_snapshot(videos: list[dict], update_time: float, is_partial: bool) -> None:
@@ -77,14 +93,12 @@ async def save_snapshot(videos: list[dict], update_time: float, is_partial: bool
         "total": len(videos),
         "videos": videos,
     }
-    try:
-        await asyncio.to_thread(
-            _atomic_write,
-            config.SNAPSHOT_FILE,
-            json.dumps(payload, ensure_ascii=False),
-        )
-    except OSError as exc:
-        log_warning(f"快照写入失败: {exc}")
+    # 写盘失败必须让 refresh 失败并保留旧缓存，否则内存与磁盘会静默分叉。
+    await asyncio.to_thread(
+        _atomic_write,
+        config.SNAPSHOT_FILE,
+        json.dumps(payload, ensure_ascii=False),
+    )
 
 
 def load_snapshot() -> tuple[list[dict], float, bool] | None:
@@ -115,7 +129,8 @@ def load_snapshot() -> tuple[list[dict], float, bool] | None:
             update_time = time.time()
 
     log_success(f"已从快照恢复 {len(videos)} 条视频")
-    return videos, float(update_time), bool(payload.get("is_partial"))
+    is_partial = bool(payload.get("is_partial")) or len(videos) < config.TARGET_VIDEOS
+    return videos, float(update_time), is_partial
 
 
 async def refresh() -> None:

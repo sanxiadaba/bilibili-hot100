@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import tempfile
 import time
 import unittest
@@ -138,6 +139,25 @@ class RefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(store.cache["is_updating"])
         self.assertEqual(store.cache["last_error"], "upstream down")
 
+    async def test_snapshot_write_failure_keeps_existing_cache(self):
+        existing = make_videos()
+        store.cache.update(videos=existing, update_time=123.0)
+
+        async def succeed():
+            return make_videos(), False, 1_700_000_000.0
+
+        with (
+            patch.object(store.crawler, "crawl", succeed),
+            patch.object(store, "_atomic_write", side_effect=OSError("disk full")),
+            self.assertRaises(OSError),
+        ):
+            await store.refresh()
+
+        self.assertIs(store.cache["videos"], existing)
+        self.assertEqual(store.cache["update_time"], 123.0)
+        self.assertFalse(store.cache["is_updating"])
+        self.assertIn("disk full", store.cache["last_error"])
+
     async def test_schedule_reuses_the_running_task(self):
         gate = asyncio.Event()
 
@@ -188,6 +208,38 @@ class SnapshotTests(unittest.IsolatedAsyncioTestCase):
             snapshot.write_text("{oops", encoding="utf-8")
             with patch.object(config, "SNAPSHOT_FILE", snapshot):
                 self.assertIsNone(store.load_snapshot())
+
+    async def test_partial_flag_is_recomputed_from_count(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            snapshot = root / "snapshot.json"
+            snapshot.write_text(
+                json.dumps({"update_time": 789.0, "videos": make_videos(95)}),
+                encoding="utf-8",
+            )
+            with patch.object(config, "SNAPSHOT_FILE", snapshot):
+                loaded = store.load_snapshot()
+
+        self.assertIsNotNone(loaded)
+        videos, _update_time, is_partial = loaded
+        self.assertEqual(len(videos), 95)
+        self.assertTrue(is_partial)
+
+
+class StoreStateTests(unittest.TestCase):
+    def setUp(self):
+        store.reset()
+
+    def tearDown(self):
+        store.reset()
+
+    def test_future_timestamp_is_stale(self):
+        store.cache.update(update_time=time.time() + 10_000)
+        self.assertTrue(store.is_stale())
+
+    def test_invalid_timestamp_is_empty_not_now(self):
+        self.assertEqual(store.iso_timestamp(None), "")
+        self.assertEqual(store.iso_timestamp(float("nan")), "")
 
 
 class ImageTests(unittest.TestCase):
