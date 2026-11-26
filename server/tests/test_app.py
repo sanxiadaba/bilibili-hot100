@@ -138,6 +138,19 @@ class FetchRetryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen, [7])
 
 
+class CrawlTests(unittest.IsolatedAsyncioTestCase):
+    async def test_both_page_errors_are_reported(self):
+        async def failing(_session, page, _page_size=None):
+            raise CrawlError(f"page {page} boom")
+
+        with patch.object(crawler, "fetch_page", failing), self.assertRaises(CrawlError) as raised:
+            await crawler.crawl()
+
+        message = str(raised.exception)
+        self.assertIn("page 1", message)
+        self.assertIn("page 2", message)
+
+
 class RefreshTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         store.reset()
@@ -352,6 +365,20 @@ class ImageTests(unittest.TestCase):
         self.assertEqual(removed, 0)
         self.assertIn(name.removesuffix(".jpg"), images.files)
 
+    def test_rebuild_cleans_stale_temp_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            stale = root / ("a" * 32 + ".webp.tmp")
+            stale.write_bytes(b"x")
+            valid = root / ("b" * 32 + ".webp")
+            valid.write_bytes(b"x")
+            images.files.clear()
+            with patch.object(config, "IMAGE_DIR", root):
+                images.rebuild()
+
+            self.assertFalse(stale.exists())
+            self.assertIn("b" * 32, images.files)
+
 
 class ApiSecurityTests(unittest.TestCase):
     def test_cross_site_refresh_is_rejected(self):
@@ -410,6 +437,10 @@ class ApiTests(unittest.TestCase):
     def test_localhost_host_is_allowed(self):
         client = TestClient(api.app, base_url="http://localhost:8000")
         self.assertEqual(client.get("/api/status").status_code, 200)
+
+    def test_fqdn_trailing_dot_is_loopback(self):
+        response = self.client.get("/api/status", headers={"Host": "localhost.:8000"})
+        self.assertEqual(response.status_code, 200)
 
     def test_hot100_is_503_before_the_first_crawl(self):
         response = self.client.get("/api/hot100")

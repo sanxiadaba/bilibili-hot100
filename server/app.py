@@ -35,7 +35,9 @@ def _hostname(headers) -> str | None:
         return None
     parsed = urlsplit(f"//{raw}")
     _ = parsed.port  # 非法端口在这里抛 ValueError
-    return parsed.hostname
+    host = parsed.hostname
+    # FQDN 写法 localhost. 与 localhost 等价，去掉末尾一个点再比对。
+    return host[:-1] if host and host.endswith(".") else host
 
 
 def _canonical_host(host: str | None) -> str | None:

@@ -47,6 +47,11 @@ def rebuild() -> None:
     if not config.IMAGE_DIR.exists():
         return
     for path in config.IMAGE_DIR.iterdir():
+        if path.is_file() and path.name.endswith(".tmp"):
+            # 进程被杀时 _store_image 的临时文件没人清，启动时顺手回收。
+            with suppress(OSError):
+                path.unlink()
+            continue
         if path.is_file() and IMAGE_NAME.fullmatch(path.name):
             files[path.stem] = path.name
     if files:
