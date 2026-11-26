@@ -1,5 +1,7 @@
 import type { Hot100Response, LogEntry, StatusResponse } from './types'
 
+const REQUEST_TIMEOUT_MS = 15_000
+
 export class ApiError extends Error {
   readonly status: number
 
@@ -11,21 +13,29 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: { Accept: 'application/json', ...init?.headers }
-  })
-  if (!response.ok) {
-    let detail = `请求失败 (${response.status})`
-    try {
-      const body = (await response.json()) as { detail?: string }
-      if (body?.detail) detail = body.detail
-    } catch {
-      // 响应不是 JSON 时保留默认提示
+  // 本机服务也可能卡住（事件循环被占、进程被挂起）；没有超时会让调用方永远 await。
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(path, {
+      ...init,
+      signal: init?.signal ?? controller.signal,
+      headers: { Accept: 'application/json', ...init?.headers }
+    })
+    if (!response.ok) {
+      let detail = `请求失败 (${response.status})`
+      try {
+        const body = (await response.json()) as { detail?: string }
+        if (body?.detail) detail = body.detail
+      } catch {
+        // 响应不是 JSON 时保留默认提示
+      }
+      throw new ApiError(detail, response.status)
     }
-    throw new ApiError(detail, response.status)
+    return (await response.json()) as T
+  } finally {
+    clearTimeout(timer)
   }
-  return (await response.json()) as T
 }
 
 export const fetchHot100 = (): Promise<Hot100Response> => request<Hot100Response>('/api/hot100')

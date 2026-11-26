@@ -37,6 +37,9 @@ const state = reactive<State>({
 
 let pollPromise: Promise<void> | null = null
 
+// 后端最坏情况：两页各 3 次 15s 重试（约 47s）+ 200 张缩略图 8 并发、单张 10s（约 250s）。
+const REFRESH_TIMEOUT_MS = 360_000
+
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : '请求失败'
 }
@@ -56,7 +59,7 @@ function sleep(ms: number): Promise<void> {
 
 async function pollUntilDone(): Promise<void> {
   state.updating = true
-  const deadline = Date.now() + 150_000
+  const deadline = Date.now() + REFRESH_TIMEOUT_MS
   try {
     while (Date.now() < deadline) {
       const status = await fetchStatus()
@@ -95,8 +98,16 @@ async function load(): Promise<void> {
       if (!(error instanceof ApiError) || error.status !== 503) throw error
       // 后端刚启动、还没抓到第一份数据：催一次并等它完成。
       state.preparing = true
-      await startRefresh().catch(() => undefined)
-      await waitForRefresh()
+      let startError: unknown = null
+      await startRefresh().catch(error => {
+        startError = error
+      })
+      try {
+        await waitForRefresh()
+      } catch (error) {
+        // 触发刷新就失败时（例如 403）保留真实原因，别被“没有数据”的轮询文案覆盖。
+        throw startError ?? error
+      }
       data = await fetchHot100()
     }
     apply(data)
