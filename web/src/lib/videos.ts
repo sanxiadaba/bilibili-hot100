@@ -39,10 +39,14 @@ export function statOf(video: VideoItem, key: StatKey): number {
   return video.stat?.[key] ?? 0
 }
 
+export function categoryOf(video: VideoItem): string {
+  return video.tname || '未分类'
+}
+
 export function categoryCounts(videos: VideoItem[]): CategoryCount[] {
   const counts = new Map<string, number>()
   for (const video of videos) {
-    const name = video.tname || '未分类'
+    const name = categoryOf(video)
     counts.set(name, (counts.get(name) ?? 0) + 1)
   }
   return [...counts.entries()]
@@ -58,7 +62,7 @@ export function selectVideos(
 ): VideoItem[] {
   const keyword = query.trim().toLowerCase()
   const result = videos.filter(video => {
-    if (category !== 'all' && video.tname !== category) return false
+    if (category !== 'all' && categoryOf(video) !== category) return false
     if (!keyword) return true
     return (
       video.title.toLowerCase().includes(keyword) ||

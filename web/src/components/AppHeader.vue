@@ -75,6 +75,7 @@ function onSort(event: Event): void {
 
     <div class="meta">
       <span v-if="state.updateTime">更新于 {{ formatTime(state.updateTime) }}</span>
+      <span v-if="state.stale && state.videos.length" class="tag warn">数据已过期</span>
       <span v-if="state.preparing" class="tag">抓取中…</span>
       <span v-else-if="state.updating" class="tag">后台刷新中…</span>
       <span v-if="state.isPartial" class="tag warn">数据不完整</span>

@@ -35,6 +35,12 @@ describe('categoryCounts', () => {
       { name: '日常', count: 1 }
     ])
   })
+
+  it('空 tname 在统计和筛选里都算未分类', () => {
+    const uncategorized = [makeVideo(1, { tname: '' })]
+    expect(categoryCounts(uncategorized)).toEqual([{ name: '未分类', count: 1 }])
+    expect(selectVideos(uncategorized, '未分类', '', 'rank')).toHaveLength(1)
+  })
 })
 
 describe('selectVideos', () => {

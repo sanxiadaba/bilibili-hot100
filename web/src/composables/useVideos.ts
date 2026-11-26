@@ -1,6 +1,6 @@
 import { computed, reactive } from 'vue'
 import { ApiError, fetchHot100, fetchStatus, startRefresh } from '@/lib/api'
-import { categoryCounts, selectVideos, summarize } from '@/lib/videos'
+import { categoryCounts, categoryOf, selectVideos, summarize } from '@/lib/videos'
 import type { Hot100Response, SortKey, VideoItem } from '@/lib/types'
 
 interface State {
@@ -51,6 +51,10 @@ function apply(data: Hot100Response): void {
   state.source = data.source
   state.stale = data.is_stale
   state.updating = data.is_updating
+  // 选中的分类刷新后可能已经掉出榜单；留在旧分类会让列表空且没有 active chip。
+  if (state.category !== 'all' && !data.data.some(video => categoryOf(video) === state.category)) {
+    state.category = 'all'
+  }
 }
 
 function sleep(ms: number): Promise<void> {

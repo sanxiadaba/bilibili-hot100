@@ -184,3 +184,10 @@ button {
     color: #ffb4b4;
   }
 }
+
+/* 手动切到深色时系统主题可能是浅色，媒体查询覆盖不到，需要单独一条。 */
+:root[data-theme='dark'] .error {
+  background: #3a1b1b;
+  border-color: #6b2a2a;
+  color: #ffb4b4;
+}
