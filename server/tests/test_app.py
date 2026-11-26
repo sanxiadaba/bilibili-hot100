@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -273,6 +274,62 @@ class ImageTests(unittest.TestCase):
         self.assertTrue(decorated[0]["pic"].startswith("/img/"))
         self.assertTrue(decorated[0]["owner"]["face"].startswith("/img/"))
         self.assertEqual(source[0]["pic"], "https://example.test/cover.jpg")
+
+    def test_partial_download_is_not_indexed(self):
+        url = "https://example.test/partial.jpg@480w_270h_1c.webp"
+        original_write = Path.write_bytes
+
+        def write_then_fail(path, data):
+            original_write(path, b"RIFF")
+            raise OSError("disk full")
+
+        class Response:
+            status = 200
+
+            async def read(self):
+                return b"RIFF____WEBP"
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+        class Session:
+            def get(self, *_args, **_kwargs):
+                return Response()
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            images.files.clear()
+            with (
+                patch.object(config, "IMAGE_DIR", root),
+                patch.object(Path, "write_bytes", write_then_fail),
+            ):
+                asyncio.run(images._download(Session(), url))
+
+            self.assertFalse((root / f"{images.key(url)}.webp").exists())
+            self.assertNotIn(images.key(url), images.files)
+
+    def test_prune_keeps_index_when_unlink_fails(self):
+        url = "https://example.test/readonly.jpg"
+        name = f"{images.key(images.thumb(url, config.COVER_SIZE))}.jpg"
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / name
+            target.write_bytes(b"x")
+            os.utime(target, (0, 0))
+            images.files.clear()
+            with (
+                patch.object(config, "IMAGE_DIR", root),
+                patch.object(Path, "unlink", side_effect=PermissionError("locked")),
+            ):
+                images.rebuild()
+                removed = images.prune(set())
+
+        self.assertEqual(removed, 0)
+        self.assertIn(name.removesuffix(".jpg"), images.files)
 
 
 class ApiSecurityTests(unittest.TestCase):

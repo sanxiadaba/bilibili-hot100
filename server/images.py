@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import time
 from contextlib import suppress
+from pathlib import Path
 
 import aiohttp
 
@@ -18,7 +20,7 @@ from .logs import log_info, log_success, log_warning
 
 # md5 -> 文件名
 files: dict[str, str] = {}
-EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif"}
+IMAGE_NAME = re.compile(r"^[0-9a-f]{32}\.(?:jpg|jpeg|png|webp|gif)$")
 
 
 def normalize(url: str) -> str:
@@ -45,7 +47,7 @@ def rebuild() -> None:
     if not config.IMAGE_DIR.exists():
         return
     for path in config.IMAGE_DIR.iterdir():
-        if path.is_file() and path.suffix[1:].lower() in EXTENSIONS:
+        if path.is_file() and IMAGE_NAME.fullmatch(path.name):
             files[path.stem] = path.name
     if files:
         log_info(f"已加载 {len(files)} 张本地缩略图")
@@ -66,6 +68,17 @@ def _sniff(data: bytes) -> str | None:
     if data.startswith(b"GIF8"):
         return "gif"
     return None
+
+
+def _store_image(target: Path, data: bytes) -> None:
+    """先写同目录临时文件再替换，进程中断不会留下被索引的半截图。"""
+    temporary = target.with_name(target.name + ".tmp")
+    try:
+        temporary.write_bytes(data)
+        temporary.replace(target)
+    finally:
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
 
 
 async def _download(session: aiohttp.ClientSession, url: str) -> None:
@@ -89,7 +102,7 @@ async def _download(session: aiohttp.ClientSession, url: str) -> None:
     name = f"{key(url)}.{extension}"
     target = config.IMAGE_DIR / name
     try:
-        await asyncio.to_thread(target.write_bytes, data)
+        await asyncio.to_thread(_store_image, target, data)
     except OSError as exc:
         log_warning(f"缩略图写入失败: {exc}")
         return
@@ -159,8 +172,15 @@ def prune(keep_urls: set[str], max_age_days: int = 1) -> int:
         except OSError:
             files.pop(stem, None)
             continue
-        with suppress(OSError):
+        try:
             path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            # 删不掉（Windows 只读/被占用）时保留索引，下次再试；否则磁盘和内存会永久分叉。
+            log_warning(f"过期缩略图删除失败: {name} ({exc})")
+            continue
+        else:
             removed += 1
         files.pop(stem, None)
     if removed:
