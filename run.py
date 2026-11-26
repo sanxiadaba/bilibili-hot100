@@ -73,14 +73,19 @@ def ensure_venv() -> int:
         result = subprocess.run(
             [str(venv_python()), str(Path(__file__).resolve()), *sys.argv[1:]], check=False
         )
-        return result.returncode
+        # 子进程就是真正的服务进程，这里必须原样带它的退出码结束父进程；
+        # 返回 0 会把“子进程已正常退出”误当成“依赖检查通过”，父进程会再起一个服务。
+        raise SystemExit(result.returncode)
 
     digest = hashlib.sha256(
         REQUIREMENTS.read_bytes() + f"{sys.version_info[:2]}".encode()
     ).hexdigest()
     marker = VENV / ".requirements"
-    installed = marker.exists() and marker.read_text(encoding="utf-8").strip() == digest
-    if not installed:
+    marker_digest = marker.read_text(encoding="utf-8").strip() if marker.exists() else None
+    if marker_digest == digest:
+        return 0
+    if marker_digest is None:
+        # 兼容手工创建或旧版本留下的 .venv：依赖齐全就补标记，避免每次启动都重装。
         installed = (
             subprocess.run(
                 [sys.executable, "-c", "import aiohttp, fastapi, pydantic, uvicorn"],
@@ -89,10 +94,9 @@ def ensure_venv() -> int:
             ).returncode
             == 0
         )
-    if installed:
-        if not marker.exists():
+        if installed:
             marker.write_text(digest, encoding="utf-8")
-        return 0
+            return 0
 
     step("安装后端依赖 ...")
     uv = shutil.which("uv")
